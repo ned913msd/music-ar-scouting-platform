@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: music_raw
+    description: "Datos crudos de la API de monitoreo musical (simulación estilo Chartmetric/Soundcharts), cargados por pipeline/ar_scouting_pipeline.py."
+    schema: main
+    tables:
+      - name: raw_artists_data
+        description: "Snapshot crudo de artistas con métricas de Spotify y TikTok. Incluye datos sucios intencionales (NaN en save_rate, skip_rate fuera de rango) que la capa dbt limpia."

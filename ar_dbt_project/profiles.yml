@@ -1,0 +1,10 @@
+# Perfil de conexión del proyecto A&R.
+# La ruta del warehouse se resuelve con MUSIC_AR_DB_PATH (portable entre máquinas);
+# el default apunta a la convención de rutas del equipo.
+ar_dbt_project:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('MUSIC_AR_DB_PATH', 'C:/Users/LENOVO/Desktop/BASES DE DATOS DE PRUEBAS/music_ar_product.duckdb') }}"
+      threads: 1
