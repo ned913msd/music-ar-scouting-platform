@@ -1,0 +1,79 @@
+version: 2
+
+models:
+  - name: artist_scouting_ranking
+    description: "Ranking de artistas emergentes con Scouting Score para decisiones de A&R. Combina métricas de Spotify (Save Rate, Skip Rate) y TikTok (Viralidad) para identificar talento con potencial de firma."
+    columns:
+      - name: artist_name
+        description: "Nombre del artista"
+        data_tests:
+          - not_null
+          - unique
+
+      - name: genre
+        description: "Género musical principal"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Pop', 'Urbano', 'Indie', 'Electrónica', 'Folk']
+
+      - name: scouting_score
+        description: "Puntaje de 0-100 que indica el potencial de firma del artista"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+      - name: save_rate_percentage
+        description: "Porcentaje de oyentes que guardan la canción (métrica clave de calidad)"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+      - name: skip_rate_percentage
+        description: "Porcentaje de oyentes que saltan la canción en los primeros 30 segundos"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+      - name: ar_recommendation
+        description: "Recomendación del sistema: FIRMAR AHORA, OBSERVAR, o DESCARTAR"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['🔥 FIRMAR AHORA', '👀 OBSERVAR', '⚠️ DESCARTAR']
+
+      - name: strategic_insight
+        description: "Insight accionable para el equipo de A&R"
+        data_tests:
+          - not_null
+
+  - name: artist_scouting
+    description: "Mart de la Fase 1: réplica exacta en SQL del prototipo pandas (DQ por exclusión). El ranking oficial para el Director vive en artist_scouting_ranking."
+    columns:
+      - name: artist_name
+        description: "Nombre del artista"
+        data_tests:
+          - not_null
+          - unique
+
+      - name: scouting_score
+        description: "Scouting Score 0-100 (fórmula 40/30/30)"
+        data_tests:
+          - not_null
+
+      - name: ar_recommendation
+        description: "Recomendación A&R"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['🔥 FIRMAR AHORA', '👀 OBSERVAR', '⚠️ DESCARTAR']
