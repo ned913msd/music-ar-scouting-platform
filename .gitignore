@@ -23,3 +23,6 @@ dbt_packages/
 .idea/
 .vscode/
 .DS_Store
+
+# dbt telemetría anónima
+.user.yml
