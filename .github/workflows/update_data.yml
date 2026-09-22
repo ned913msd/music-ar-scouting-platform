@@ -1,0 +1,46 @@
+name: Actualización Automática de Datos (Deezer API)
+
+on:
+  schedule:
+    # Todos los lunes a las 13:00 UTC (8:00 AM en Colombia/Medellín)
+    - cron: '0 13 * * 1'
+  workflow_dispatch: # permite ejecutarlo manualmente desde la pestaña Actions
+
+# Permisos explícitos para que el bot pueda hacer push del seed actualizado
+permissions:
+  contents: write
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v4
+        with:
+          # El GITHUB_TOKEN por defecto expira al terminar el job; con
+          # persist-credentials el push dentro del job usa la sesión viva
+          persist-credentials: true
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas requests
+
+      - name: Ejecutar script de actualización
+        run: python scripts/daily_update.py
+
+      - name: Guardar cambios en GitHub
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add ar_dbt_project/seeds/deezer_artists_data.csv
+          git diff --cached --quiet \
+            && echo "Sin cambios de datos: no se crea commit" \
+            || git commit -m "🤖 Auto-update: Nuevos datos de Deezer API ($(date -u +%Y-%m-%d))"
+          git push

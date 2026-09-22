@@ -106,6 +106,24 @@ if modelo_ml is not None:
 else:
     df["probabilidad_viral"] = 0.0
 
+# ==========================================
+# FORECASTING DE CRECIMIENTO (Módulo 5)
+# ==========================================
+# El gráfico se genera una vez por proceso (no en cada re-render): Prophet o
+# su fallback sklearn solo se ejecutan cuando la app arranca o pasa la TTL.
+@st.cache_resource(ttl=86400)
+def cargar_forecast():
+    import forecast_fans
+    return forecast_fans.fit_and_forecast(save_png=False)
+
+
+st.sidebar.header("🗂️ Vistas")
+vista_tab = st.sidebar.radio(
+    "Selecciona la vista:",
+    options=["🎯 Scouting", "🔮 Forecasting 6M"],
+    label_visibility="collapsed",
+)
+
 # Sidebar - Filtros (literales con emoji: en el pegado del tutorial se perdieron)
 st.sidebar.header("🎛️ Filtros de Búsqueda")
 recommendation_filter = st.sidebar.multiselect(
@@ -211,7 +229,56 @@ st.dataframe(
     hide_index=True,
 )
 
-# Exportar datos
+# ==========================================
+# VISTA 2: FORECASTING (solo se renderiza al pedirla)
+# ==========================================
+if vista_tab == "🔮 Forecasting 6M":
+    try:
+        fc = cargar_forecast()
+    except Exception as e:
+        st.error(f"⚠️ No se pudo generar el forecast: {e}")
+        st.stop()
+
+    st.subheader(f"🔮 Proyección de Crecimiento de Fans: {fc['artista']}")
+    st.markdown(
+        "**Series de tiempo** para anticipar el fandom a 6 meses — la métrica "
+        "que planea giras, lanzamientos y pricing de firma antes de que el "
+        "artista explote."
+    )
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Fans hoy", f"{fc['fans_hoy']:,}")
+    c2.metric("Crecimiento proyectado (6M)", f"+{fc['crecimiento_6m_pct']}%")
+    c3.metric("CAGR anualizado", f"{fc['cagr_anualizado_pct']}%")
+
+    st.pyplot(fc["fig"], use_container_width=True)
+
+    with st.expander("📋 Detalle mes a mes de la proyección"):
+        st.dataframe(fc["forecast"], use_container_width=True, hide_index=True)
+
+    st.caption(
+        f"Motor: **{fc['engine']}** · Histórico demo de 24 meses anclado al mes "
+        "actual (forecast 'evergreen': siempre proyecta los 6 meses siguientes). "
+        "El robot de "
+        "GitHub Actions (lunes 8 AM) acumula snapshots reales de fans — con 6+ "
+        "puntos este histórico se reemplaza por datos observados sin cambiar código."
+    )
+
+    # El resto de la página (tabla + export) no aplica en esta vista
+    st.sidebar.divider()
+    st.sidebar.subheader("💾 Exportar Datos")
+    csv_fc = fc["forecast"].to_csv(index=False).encode("utf-8")
+    st.sidebar.download_button(
+        label="📥 Descargar proyección (CSV)",
+        data=csv_fc,
+        file_name=f"forecast_fans_{fc['artista'].replace(' ', '_').lower()}.csv",
+        mime="text/csv",
+    )
+    st.divider()
+    st.caption("Data Product desarrollado por David NED Bustamante | Music Data Analyst | CI/CD semanal + Forecasting")
+    st.stop()
+
+# Exportar datos (Vista 1: Scouting)
 st.sidebar.divider()
 st.sidebar.subheader("💾 Exportar Datos")
 csv = df_filtered.to_csv(index=False).encode("utf-8")
@@ -226,4 +293,7 @@ conn.close()
 
 # Footer
 st.divider()
-st.caption("Data Product desarrollado por David NED Bustamante | Music Data Analyst")
+st.caption(
+    "Data Product desarrollado por David NED Bustamante | Music Data Analyst "
+    "| Datos: robot semanal (GitHub Actions) · Predicción: RandomForest · Forecasting: Prophet/sklearn"
+)

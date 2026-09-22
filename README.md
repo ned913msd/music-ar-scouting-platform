@@ -209,6 +209,26 @@ El modelo se serializa con `joblib` (`modelo_viralidad_rf.pkl` + `feature_names.
 jupyter notebook --notebook-dir notebooks
 ```
 
+## 🤖 Módulo 5 — Automatización y Forecasting (de proyecto a negocio)
+
+Un dashboard que se actualiza a mano es un proyecto de estudiante; uno que se actualiza solo, predice el futuro y no requiere tocar una tecla es un producto en operación.
+
+### Actualización automática semanal (GitHub Actions)
+
+El workflow **`.github/workflows/update_data.yml`** despierta cada lunes 13:00 UTC (8:00 AM Medellín; también ejecutable a mano con `workflow_dispatch`), consulta la API de Deezer para la cartera monitoreada y commitea el CSV fresco con el bot `github-actions[bot]`. Ese push dispara el redeploy de Render: datos nuevos en producción sin intervención humana.
+
+- **`scripts/daily_update.py`** — el cerebro del robot: reutiliza el matcher de homónimos y el proxy de rank (top-10 de tracks) del extractor, hace **upsert por `artist_id`** sobre el seed existente (nunca borra artistas del portafolio) y actualiza **solo las 9 columnas núcleo** — las derivadas las recalcula el mart dbt, fuente única de verdad.
+- Corrida de verificación con datos reales en movimiento: KAROL G +120 fans, Feid +91, Myke Towers +92 desde el snapshot anterior → seed → `dbt seed --full-refresh` → mart reconstruido → **26/26 tests PASS**.
+- Nota de ingeniería: dbt-duckdb infiere el esquema del seed desde la tabla ya existente en el warehouse; al cambiar las columnas del CSV hay que usar `dbt seed --full-refresh` para que la tabla se recree desde el archivo.
+
+### Forecasting de fans con Prophet
+
+**`scripts/forecast_fans.py`** entrena Prophet (Meta) con un histórico mensual de fans y proyecta **6 meses hacia adelante**; el dashboard lo expone en la pestaña **📈 Forecasting** (con `st.cache_data`: el plan gratuito de Render no paga el re-entrenamiento en cada visita).
+
+- Proyección **evergreen**: el histórico se ancla al mes actual, así el forecast siempre mira hacia adelante (nada de fechas congeladas de hace un año).
+- **Estacionalidad anual adaptativa**: solo se activa con ≥24 meses de historial — con menos, Prophet no puede identificar el ciclo anual y produce valles falsos en la proyección (defecto detectado y corregido en ejecución real).
+- Resultado verificado para KAROL G: 6.0M → **7.34M fans (+22.3%)** a 6 meses; el notebook compara motores: regresión lineal (sklearn) +15.5% vs Prophet +22.3% — Prophet captura el momentum no lineal del crecimiento.
+
 ## 🎓 Competencias Demostradas
 
 Este proyecto demuestra habilidades de Music Data Analyst y Analytics Engineer:
@@ -228,6 +248,7 @@ Este proyecto demuestra habilidades de Music Data Analyst y Analytics Engineer:
 - [ ] Web scraping de datos de TikTok y YouTube
 - [x] Modelo de Machine Learning integrado al dashboard: Random Forest (ROC-AUC 0.9242) serializado con joblib, prediciendo **Probabilidad de Viralidad 6M** por artista en producción
 - [ ] Alertas automáticas cuando un artista entra en "Firmar Ahora"
+- [x] **Sistema autónomo (Módulo 5)**: robot semanal de datos (GitHub Actions → Deezer API) + forecasting de fans 6M con Prophet integrado al dashboard
 - [x] Blueprint de despliegue en la nube (Render) con app auto-reparable (`bootstrap_db.py` + `render.yaml`)
 - [ ] Módulo de touring: cruce con datos geoespaciales para planificación de giras
 
