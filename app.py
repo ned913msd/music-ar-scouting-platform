@@ -458,6 +458,167 @@ def load_custom_css():
     ::-webkit-scrollbar-thumb:hover {
         background: linear-gradient(180deg, #0080FF, #0066FF);
     }
+
+    /* ==========================================
+       MICRO-INTERACCIONES AVANZADAS
+       ========================================== */
+
+    /* 1. EFECTO RIPPLE EN BOTONES (onda al hacer clic) */
+    .stButton > button {
+        position: relative;
+        overflow: hidden;
+        transform: translateZ(0); /* acelera el render en GPU */
+    }
+
+    .stButton > button::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        background: rgba(255, 255, 255, 0.4);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        transition: width 0.6s ease-out, height 0.6s ease-out, opacity 0.6s ease-out;
+        opacity: 0;
+        pointer-events: none; /* no interfiere con el clic */
+    }
+
+    .stButton > button:active::after {
+        width: 400px;
+        height: 400px;
+        opacity: 1;
+        transition: 0s; /* aparece instantáneo al presionar */
+    }
+
+    /* 2. TRANSICIÓN DE PÁGINA (fade & scale al cargar).
+       Combinada con gradientShift en UNA declaración: dos reglas .stApp
+       con animation distinta se pisan entre sí (la última gana) y matarían
+       el gradiente animado. */
+    .stApp {
+        animation:
+            pageTransition 0.8s cubic-bezier(0.4, 0, 0.2, 1),
+            gradientShift 15s ease infinite;
+    }
+
+    @keyframes pageTransition {
+        0% {
+            opacity: 0;
+            transform: scale(0.98) translateY(10px);
+            filter: blur(4px);
+        }
+        100% {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            filter: blur(0);
+        }
+    }
+
+    /* 3. STAGGER EFFECT: entrada con rebote (overshoot) para las cards de
+       artista. El delay real se aplica INLINE por card (Streamlit no
+       conserva contenedores entre st.markdown, así que nth-child no
+       staggeriza: cada card es hija única de su wrapper) */
+    .neumorphic-card.artist-card {
+        opacity: 0;
+        transform: translateY(40px);
+        animation: staggerSlideIn 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+
+    @keyframes staggerSlideIn {
+        0% {
+            opacity: 0;
+            transform: translateY(40px) scale(0.95);
+        }
+        100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    /* 4. Accesibilidad: sin movimiento para quien lo pide al sistema.
+       Sin esto, las cards quedarían en opacity:0 (estado base del stagger)
+       con las animaciones desactivadas. */
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+        }
+        .neumorphic-card.artist-card {
+            opacity: 1 !important;
+            transform: none !important;
+        }
+    }
+
+    /* 5. Compatibilidad Streamlit ≥1.64: los botones ya no usan .stButton
+       (ahora [data-testid="stBaseButton-*"]); replicamos el estilo premium
+       completo (gradiente + shimmer + ripple) en el selector actual */
+    [data-testid="stBaseButton-secondary"] {
+        position: relative;
+        overflow: hidden;
+        transform: translateZ(0);
+        background: linear-gradient(145deg, #0066FF, #0052CC);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-weight: 600;
+        box-shadow:
+            4px 4px 8px #d1d5db,
+            -4px -4px 8px #ffffff;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    [data-testid="stBaseButton-secondary"]::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+        transition: left 0.6s ease;
+    }
+
+    [data-testid="stBaseButton-secondary"]:hover::before { left: 100%; }
+
+    [data-testid="stBaseButton-secondary"]:hover {
+        transform: translateY(-3px);
+        box-shadow:
+            8px 8px 16px #d1d5db,
+            -8px -8px 16px #ffffff,
+            0 0 20px rgba(0, 102, 255, 0.4);
+    }
+
+    [data-testid="stBaseButton-secondary"]:active {
+        transform: translateY(0);
+        box-shadow:
+            inset 3px 3px 6px #004099,
+            inset -3px -3px 6px #0080FF;
+    }
+
+    [data-testid="stBaseButton-secondary"]::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        background: rgba(255, 255, 255, 0.4);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        transition: width 0.6s ease-out, height 0.6s ease-out, opacity 0.6s ease-out;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    [data-testid="stBaseButton-secondary"]:active::after {
+        width: 400px;
+        height: 400px;
+        opacity: 1;
+        transition: 0s;
+    }
     </style>
     """
     st.markdown(custom_css, unsafe_allow_html=True)
@@ -477,7 +638,7 @@ def display_kpi_grid(kpis):
     )
 
 
-def artist_card_html(row, photo_data_uri=None):
+def artist_card_html(row, photo_data_uri=None, index=0):
     """Fase 2: card de artista neumórfica. Conserva las features del tablero
     anterior que el HTML plano del tutorial descartaba: Probabilidad de
     Viralidad (ML) con barra, y fallback de foto si la CDN falla."""
@@ -497,8 +658,10 @@ def artist_card_html(row, photo_data_uri=None):
         badge_color_for(row["ar_recommendation"]),
         inline=True,
     )
+    # Stagger real por card: el delay va inline (nth-child no funciona entre
+    # st.markdown separados: cada card es hija única de su wrapper en el DOM)
     return f"""
-    <div class="neumorphic-card">
+    <div class="neumorphic-card artist-card" style="animation-delay: {index * 0.1:.1f}s;">
         <div style="display: grid; grid-template-columns: 100px 1fr 220px; gap: 20px; align-items: center;">
             <div>{photo}</div>
             <div>
@@ -673,6 +836,20 @@ def dark_neumorphism_css():
         box-shadow:
             6px 6px 12px #05070c,
             -6px -6px 12px #24314a;
+    }
+
+    /* Compatibilidad 1.64: botón real en el tema oscuro */
+    [data-testid="stBaseButton-secondary"] {
+        background: linear-gradient(145deg, #0066FF, #0052CC);
+        box-shadow:
+            4px 4px 8px #05070c,
+            -4px -4px 8px #1f2a3d;
+    }
+    [data-testid="stBaseButton-secondary"]:hover {
+        box-shadow:
+            6px 6px 12px #05070c,
+            -6px -6px 12px #24314a,
+            0 0 20px rgba(0, 102, 255, 0.4);
     }
 
     .stTextInput > div > div > input,
@@ -1009,15 +1186,16 @@ st.subheader("🏆 Top 10 Artistas Prioritarios")
 
 top_10 = df_filtered.head(10)
 
-for idx, row in top_10.iterrows():
+for pos, (_, row) in enumerate(top_10.iterrows()):
     # Foto cacheada convertida a data URI: un solo request por URL, y el HTML
     # no depende de que la CDN responda (fallback a imagen placeholder)
     try:
-        foto_uri = cargar_foto_uri(row.loc["picture_url"])
+        foto_uri = cargar_foto_uri(row["picture_url"])
     except Exception:
         foto_uri = None
     st.markdown(
-        artist_card_html(row, photo_data_uri=foto_uri), unsafe_allow_html=True
+        artist_card_html(row, photo_data_uri=foto_uri, index=pos),
+        unsafe_allow_html=True,
     )
 
 # Tabla completa exportable

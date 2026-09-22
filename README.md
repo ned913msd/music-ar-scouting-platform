@@ -171,6 +171,13 @@ La interfaz usa un design system propio (`.streamlit/config.toml` + CSS inyectad
 
 Capa de microinteracciones sobre el design system: fondo con gradiente en movimiento lento, **entrada escalonada** de KPIs (`fadeInUp` con delays), valores con `countUp`, hover con elevación + glow en cards y métricas, **brillo deslizante (shimmer)** en botones, foco pulsante en inputs, **badges con pulso semántico** (rojo FIRMAR AHORA / naranja OBSERVAR / gris DESCARTAR), barra de Probabilidad de Viralidad que **anima desde 0%**, efecto shine en las fotos de artista, **spinner + skeleton loaders** durante la primera carga y scrollbar personalizada. Dos decisiones de ingeniería: el efecto shine vive en un contenedor (`div.image-shine`) porque los `<img>` no soportan `::after`, y el estado de carga usa **slots `st.empty()` con flag de sesión** — solo aparece en la primera carga, no parpadea en cada re-render (filtro/toggle), y los componentes premium tienen equivalentes en el tema oscuro.
 
+#### 🪄 Micro-interacciones nativas
+
+- **Ripple** (onda al clic) y **shimmer** en botones, replicados en el selector real de Streamlit ≥1.64 (`[data-testid="stBaseButton-*"]`) — el clásico `.stButton` ya no existe y el estilo premium no se aplicaba.
+- **Transición de página** (fade & scale al cargar) **combinada en una sola declaración** con el gradiente animado: dos reglas `.stApp` con `animation` distinta se pisan entre sí.
+- **Stagger con overshoot físico** (`cubic-bezier(0.34, 1.56, 0.64, 1)`) en las cards de artista: el delay va **inline por card** porque `nth-child` no staggeriza entre `st.markdown` separados (cada card es hija única de su wrapper en el DOM).
+- **`prefers-reduced-motion`**: quien pide menos movimiento al sistema obtiene la app estática y visible (sin el guard, las cards quedarían en `opacity:0` con las animaciones desactivadas).
+
 ### ☁️ Spotify Web API (estado)
 
 El extractor `spotify_data_extractor.py` está listo (Spotipy + `.env` + Client Credentials, sin ventana de navegador), pero **la política 2025 de Spotify exige que el dueño de la app tenga suscripción Premium activa** para permitir llamadas a la Web API. Al activar Premium, el script funciona tal cual está. Además, el endpoint `audio-features` fue deprecado por Spotify (27-11-2025); el extractor lo degrada con valores neutros.
