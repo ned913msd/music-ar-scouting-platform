@@ -163,6 +163,10 @@ Lectura de negocio: sobre una lista de emergentes, solo la artista ya consolidad
 
 El CSV generado se versiona como **seed de dbt** (`ar_dbt_project/seeds/`) y se convierte en tabla con `dbt seed`. El mart `artist_scouting_deezer` calcula el Scouting Score en SQL puro (50/30/20) con clamping de rangos, y el dashboard de Streamlit lo consume directamente: **fotos reales** de los artistas desde la CDN de Deezer, métricas por artista, link al perfil, filtros por recomendación/score y exportación CSV. Con los datos reales cargados: **26/26 tests en verde** (fans/rank en rango 0–1M, nombres únicos, recomendaciones válidas).
 
+#### 🎨 Diseño Neumorphism premium
+
+La interfaz usa un design system propio (`.streamlit/config.toml` + CSS inyectado en `app.py`): tema claro con **sombras suaves dobles** (neumorphism), KPIs en grid responsive con valores destacados, cards de artista con foto, insight en pill y **barra de Probabilidad de Viralidad** integrada, botones con brillo deslizante al hover y animaciones de entrada (`slideIn`). Detalles de ingeniería del diseño: las fotos se embeben como **data URI cacheado** (1 request por artista/hora, con fallback SVG local si la CDN falla) y los selectores CSS usan `data-testid` estables en vez de hashes `.css-*` que cambian entre versiones de Streamlit. Las dos vistas (🎯 Scouting / 🔮 Forecasting) se despachan como páginas independientes.
+
 ### ☁️ Spotify Web API (estado)
 
 El extractor `spotify_data_extractor.py` está listo (Spotipy + `.env` + Client Credentials, sin ventana de navegador), pero **la política 2025 de Spotify exige que el dueño de la app tenga suscripción Premium activa** para permitir llamadas a la Web API. Al activar Premium, el script funciona tal cual está. Además, el endpoint `audio-features` fue deprecado por Spotify (27-11-2025); el extractor lo degrada con valores neutros.

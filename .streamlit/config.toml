@@ -1,0 +1,10 @@
+[theme]
+primaryColor = "#0066FF"
+backgroundColor = "#F0F2F6"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#262730"
+font = "sans serif"
+
+[server]
+# Fotos de la CDN de Deezer: se sirven desde su dominio, no del nuestro
+enableXsrfProtection = true
