@@ -67,7 +67,7 @@ if bootstrap_db.ensure_database(AR_DB):
     st.success("✅ ¡Base de datos inicializada con éxito!")
 bootstrap_db.ensure_table(AR_DB)
 
-conn = duckdb.connect(AR_DB, read_only=True)
+conn = bootstrap_db.get_connection(AR_DB)  # única conexión read-write del proceso
 
 # Cargar datos del modelo (creado por dbt o reconstruido por el bootstrap)
 try:
@@ -113,6 +113,11 @@ else:
 # su fallback sklearn solo se ejecutan cuando la app arranca o pasa la TTL.
 @st.cache_resource(ttl=86400)
 def cargar_forecast():
+    import sys
+
+    # El motor vive en scripts/; añadimos la carpeta al path para que el
+    # import funcione igual en local y en el contenedor de Render.
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "scripts"))
     import forecast_fans
     return forecast_fans.fit_and_forecast(save_png=False)
 
@@ -289,7 +294,9 @@ st.sidebar.download_button(
     mime="text/csv",
 )
 
-conn.close()
+# La conexión compartida se cachea por proceso: NO se cierra aquí.
+# Cerrarla en cada render mataba la re-ejecución de Streamlit
+# ("Connection already closed!") al cambiar de vista.
 
 # Footer
 st.divider()

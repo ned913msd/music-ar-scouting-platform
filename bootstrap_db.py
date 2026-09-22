@@ -98,6 +98,29 @@ def _scored_table_sql(csv_path):
     """
 
 
+# Conexiones vivas por archivo (una por proceso). DuckDB rechaza abrir el
+# mismo archivo con configuraciones distintas en un mismo proceso
+# (read_only vs read-write): por eso app y reparaciones comparten UNA única
+# conexión read-write cacheada — el conflicto de configuración no puede ocurrir.
+_CONN_CACHE = {}
+
+
+def get_connection(db_path=None):
+    """Devuelve la conexión read-write cacheada del proceso para ese archivo."""
+    db_path = db_path or resolve_db_path()
+    con = _CONN_CACHE.get(db_path)
+    if con is not None:
+        try:
+            con.execute("SELECT 1")
+            return con
+        except duckdb.Error:
+            # Conexión muerta (p. ej. cerrada por código heredado): renovar.
+            _CONN_CACHE.pop(db_path, None)
+    con = duckdb.connect(db_path)
+    _CONN_CACHE[db_path] = con
+    return con
+
+
 def ensure_table(db_path=None, seed_path=DEFAULT_SEED):
     """
     Segunda capa de auto-reparación: si el archivo existe pero la tabla
@@ -105,7 +128,7 @@ def ensure_table(db_path=None, seed_path=DEFAULT_SEED):
     Devuelve True si creó la tabla, False si ya estaba.
     """
     db_path = db_path or resolve_db_path()
-    con = duckdb.connect(db_path)
+    con = get_connection(db_path)
     exists = con.execute(
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_name = 'artist_scouting_deezer'"
@@ -113,7 +136,6 @@ def ensure_table(db_path=None, seed_path=DEFAULT_SEED):
     created = not exists
     if created:
         con.execute(_scored_table_sql(seed_path))
-    con.close()
     return created
 
 
@@ -131,9 +153,8 @@ def ensure_database(db_path=None, seed_path=DEFAULT_SEED):
             "Ejecuta el extractor (python deezer_data_extractor.py) o "
             "verifica que el repo esté completo."
         )
-    con = duckdb.connect(db_path)
+    con = get_connection(db_path)
     con.execute(_scored_table_sql(seed_path))
-    con.close()
     return True
 
 
@@ -143,7 +164,7 @@ if __name__ == "__main__":
     created = ensure_database(target)
     print(f"warehouse: {target}")
     print("creado ahora" if created else "ya existía (nada por hacer)")
-    con = duckdb.connect(target, read_only=True)
+    con = get_connection(target)
     n = con.execute("SELECT COUNT(*) FROM artist_scouting_deezer").fetchone()[0]
     top = con.execute(
         "SELECT artist_name, scouting_score, ar_recommendation "
