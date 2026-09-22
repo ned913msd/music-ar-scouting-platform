@@ -6,6 +6,13 @@
 [![dbt](https://img.shields.io/badge/dbt-Core-orange)](https://www.getdbt.com/)
 [![DuckDB](https://img.shields.io/badge/DuckDB-Analytics-green)](https://duckdb.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-red)](https://streamlit.io/)
+[![Deployed on Render](https://img.shields.io/badge/Deployed%20on-Render-46E3B7?style=for-the-badge&logo=render)](https://music-ar-scouting-platform.onrender.com/)
+
+### 🌐 Demo en Vivo
+
+**URL Pública:** [https://music-ar-scouting-platform.onrender.com/](https://music-ar-scouting-platform.onrender.com/)
+
+> ⏱️ El servicio corre en el plan gratuito de Render: si estuvo inactivo, la primera carga puede tardar ~50 segundos mientras el servidor despierta (luego responde al instante). La base de datos se auto-inicializa desde el seed del repo gracias a `bootstrap_db.py`.
 
 ## 🎯 El Problema de Negocio
 
