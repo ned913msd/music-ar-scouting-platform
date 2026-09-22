@@ -178,7 +178,27 @@ El dashboard dice *"cómo están los artistas hoy"*; el laboratorio de ML constr
 - **Objetivo**: predecir >70% de probabilidad de duplicar `deezer_fans` en 6 meses.
 - **Features**: Deezer Rank actual · ratio de crecimiento de fans · popularidad del top track vs. promedio del género.
 - **Target**: `is_viral` (1/0).
-- **Datos actuales**: 10 artistas reales del warehouse (para diseño de features); la siguiente fase genera dataset sintético de 10.000 artistas con series de tiempo para entrenar (baseline logístico → Random Forest / XGBoost).
+- **Datos actuales**: 10 artistas reales del warehouse (para diseño de features); dataset sintético de 10.000 artistas con series de tiempo para entrenar.
+
+**Primer modelo entrenado y evaluado** (Random Forest, 100 árboles, max_depth 5 — notebook ejecutado end-to-end con salidas embebidas):
+
+| Métrica | Valor | Lectura |
+|---------|------:|---------|
+| **ROC-AUC** | **0.9242** | Excelente (>0.70 ya se considera bueno en comportamiento humano) |
+| Accuracy | 86% | 2.000 artistas de prueba (split 80/20 estratificado) |
+| Precision (Viral) | 79% | Cuando el modelo dice "firmar", acierta 4 de 5 |
+| Recall (Viral) | 91% | Encuentra 9 de cada 10 artistas que explotarán |
+
+**Feature Importance** (el "por qué" para el VP de A&R):
+
+```
+monthly_growth_rate  76.97%  ← el momentum lo es todo
+top/track_rank       17.59%
+current_rank          3.21%
+current_fans          2.03%  ← el tamaño actual casi no predice
+```
+
+> 💡 La lección de negocio, ahora con números: la tasa de crecimiento mensual es **~38× más predictiva** que el número de fans actuales. Un artista con 5.000 fans creciendo +25% mensual vale más que uno estancado en 100.000.
 
 ```bash
 # Abrir el laboratorio (requiere requirements-dev.txt)
@@ -202,7 +222,7 @@ Este proyecto demuestra habilidades de Music Data Analyst y Analytics Engineer:
 - [x] Datos reales de streaming vía API pública de Deezer (fans, rank de reproducción, momentum de lanzamientos)
 - [ ] Integración con Spotify Web API (bloqueada por política 2025: exige Premium del dueño de la app — extractor listo)
 - [ ] Web scraping de datos de TikTok y YouTube
-- [ ] Modelo de Machine Learning para predicción de viralidad *(en curso: notebook y hipótesis definidos, dataset de entrenamiento en construcción)*
+- [ ] Modelo de Machine Learning para predicción de viralidad *(primer Random Forest entrenado: ROC-AUC 0.9242; siguiente paso: integración al dashboard)*
 - [ ] Alertas automáticas cuando un artista entra en "Firmar Ahora"
 - [x] Blueprint de despliegue en la nube (Render) con app auto-reparable (`bootstrap_db.py` + `render.yaml`)
 - [ ] Módulo de touring: cruce con datos geoespaciales para planificación de giras
