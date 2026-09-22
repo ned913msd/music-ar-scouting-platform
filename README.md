@@ -37,7 +37,7 @@ Desarrollé un **Data Product end-to-end** que:
 
 | Capa | Tecnología | Propósito |
 |------|-----------|-----------|
-| **Extracción** | Python (Pandas, NumPy) | Pipeline ETL y simulación de APIs de monitoreo |
+| **Extracción** | Python (Pandas, NumPy, Requests, Spotipy) | Pipeline ELT, simulación de APIs de monitoreo y extractores de datos reales (Deezer / Spotify) |
 | **Almacenamiento** | DuckDB | Data warehouse analítico local |
 | **Transformación** | dbt-core (+ dbt_utils) | Modelado, Scouting Score y tests de calidad |
 | **Visualización** | Streamlit | Dashboard interactivo para stakeholders |
@@ -107,12 +107,48 @@ WHERE ar_recommendation = '🔥 FIRMAR AHORA'
 ORDER BY scouting_score DESC;
 ```
 
+### 🎬 Datos en vivo: API real (Deezer)
+
+Además del dataset simulado, el producto extrae **datos reales de streaming** vía la API pública de Deezer (sin API key, sin login y sin Premium): fans reales (`nb_fan`), rank de reproducción real de tracks (0–1M), catálogo de álbumes y fecha de lanzamiento.
+
+```bash
+# 10 artistas latino por defecto (o pásale los tuyos como argumentos)
+python deezer_data_extractor.py
+python deezer_data_extractor.py "Feid" "Tyla" "Binario"
+```
+
+**Scouting Score con datos reales** (misma estructura 40/30/30):
+
+| Dimensión | Peso | Métrica real de Deezer |
+|-----------|------|------------------------|
+| Fandom consolidado | 40% | `nb_fan` normalizado (métrica reina: demanda real) |
+| Rank de reproducción | 30% | `rank` del top de tracks (0–1.000.000) |
+| Momentum | 30% | recencia del último lanzamiento (decaimiento exponencial sobre 24 meses) |
+
+Resultado de la corrida real (10 artistas, persistido en `real_artists_raw` en DuckDB):
+
+| Artista | Fans reales | Rank top track | Score | Recomendación |
+|---------|------------:|---------------:|------:|---------------|
+| Shakira | 11.720.580 | 990.618 | 99,55 | 🔥 FIRMAR AHORA |
+| J Balvin | 10.340.615 | 889.203 | 91,62 | 🔥 FIRMAR AHORA |
+| Maluma | 8.074.612 | 980.373 | 86,80 | 🔥 FIRMAR AHORA |
+| Bad Bunny | 8.004.135 | 981.279 | 76,60 | 🔥 FIRMAR AHORA |
+| KAROL G | 3.411.804 | 981.639 | 69,82 | 👀 OBSERVAR |
+| Rauw Alejandro | 2.136.840 | 888.515 | 63,78 | 👀 OBSERVAR |
+
+### ☁️ Spotify Web API (estado)
+
+El extractor `spotify_data_extractor.py` está listo (Spotipy + `.env` + Client Credentials, sin ventana de navegador), pero **la política 2025 de Spotify exige que el dueño de la app tenga suscripción Premium activa** para permitir llamadas a la Web API. Al activar Premium, el script funciona tal cual está. Además, el endpoint `audio-features` fue deprecado por Spotify (27-11-2025); el extractor lo degrada con valores neutros.
+
+> 🔐 Crea tu propio `.env` (no versionado) con `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` y `SPOTIFY_REDIRECT_URI=http://127.0.0.1:8501`.
+
 ## 🎓 Competencias Demostradas
 
 Este proyecto demuestra habilidades de Music Data Analyst y Analytics Engineer:
 
 - ✅ **Music Business**: entendimiento de métricas de streaming (Save Rate, Skip Rate, Follower Ratio, viralidad en TikTok)
-- ✅ **Data Engineering**: pipeline ETL automatizado con Python hacia DuckDB
+- ✅ **Data Engineering**: pipeline ETL automatizado con Python hacia DuckDB + extractores de APIs reales (Deezer) con throttling y reintentos
+- ✅ **API Integration**: consumo de Web APIs públicas con manejo de rate limits, deprecación de endpoints (audio-features) y políticas de acceso (Spotify Premium gate)
 - ✅ **Analytics Engineering**: modelado con dbt (staging → marts), patrón ELT y grafo de dependencias
 - ✅ **Data Quality**: 16 tests automatizados (rangos, valores aceptados, unicidad) que ya cazaron un bug real de porcentajes
 - ✅ **Product Management**: de problema de negocio → solución técnica → valor medible
@@ -120,7 +156,8 @@ Este proyecto demuestra habilidades de Music Data Analyst y Analytics Engineer:
 
 ## 🔮 Próximos Pasos (Roadmap)
 
-- [ ] Integración con API real de Spotify (Spotipy)
+- [x] Datos reales de streaming vía API pública de Deezer (fans, rank de reproducción, momentum de lanzamientos)
+- [ ] Integración con Spotify Web API (bloqueada por política 2025: exige Premium del dueño de la app — extractor listo)
 - [ ] Web scraping de datos de TikTok y YouTube
 - [ ] Modelo de Machine Learning para predicción de viralidad
 - [ ] Alertas automáticas cuando un artista entra en "Firmar Ahora"

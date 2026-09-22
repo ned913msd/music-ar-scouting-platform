@@ -24,5 +24,14 @@ dbt_packages/
 .vscode/
 .DS_Store
 
+# Secretos (credenciales Spotify — NUNCA versionar)
+.env
+.env.local
+.cache
+.cache-*
+
+# Exports de datos crudos (no versionar datos)
+*.csv
+
 # dbt telemetría anónima
 .user.yml
