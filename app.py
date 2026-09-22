@@ -214,6 +214,44 @@ def load_custom_css():
             4px 4px 8px #d1d5db,
             -4px -4px 8px #ffffff;
     }
+
+    /* Internos de la card de artista como CLASES (no estilos inline):
+       así el modo oscuro puede sobreescribirlos sin pelear con inline */
+    .artist-name { margin: 0; color: #1f2937; }
+    .artist-meta { margin: 5px 0; color: #6b7280; font-size: 0.9rem; }
+    .score-value { color: #0066FF; }
+    .artist-track { margin: 5px 0; color: #4b5563; font-size: 0.85rem; }
+    .insight-pill {
+        background: #e0f2fe;
+        padding: 8px 12px;
+        border-radius: 8px;
+        margin-top: 10px;
+    }
+    .insight-pill span { color: #0369a1; font-size: 0.85rem; }
+    .stat-block { margin-bottom: 10px; }
+    .stat-label {
+        font-size: 0.75rem;
+        color: #6b7280;
+        text-transform: uppercase;
+    }
+    .stat-value-blue { font-size: 1.5rem; font-weight: 700; color: #0066FF; }
+    .stat-value-dark { font-size: 1.5rem; font-weight: 700; color: #1f2937; }
+    .viral-track {
+        background: #e5e7eb;
+        border-radius: 6px;
+        height: 8px;
+        margin-top: 4px;
+        overflow: hidden;
+    }
+    .viral-fill {
+        background: linear-gradient(90deg, #0066FF, #4d94ff);
+        height: 100%;
+    }
+    .deezer-link {
+        color: #0066FF;
+        text-decoration: none;
+        font-weight: 600;
+    }
     </style>
     """
     st.markdown(custom_css, unsafe_allow_html=True)
@@ -250,39 +288,151 @@ def artist_card_html(row, photo_data_uri=None):
         <div style="display: grid; grid-template-columns: 100px 1fr 220px; gap: 20px; align-items: center;">
             <div>{photo}</div>
             <div>
-                <h3 style="margin: 0; color: #1f2937;">{row['artist_name']}</h3>
-                <p style="margin: 5px 0; color: #6b7280; font-size: 0.9rem;">
-                    {row['ar_recommendation']} | Score: <strong style="color: #0066FF;">{row['scouting_score']:.0f}/100</strong>
-                </p>
-                <p style="margin: 5px 0; color: #4b5563; font-size: 0.85rem;">
-                    🎵 Top Track: {row['top_track_name']}
-                </p>
-                <div style="background: #e0f2fe; padding: 8px 12px; border-radius: 8px; margin-top: 10px;">
-                    <span style="color: #0369a1; font-size: 0.85rem;">💡 {row['strategic_insight']}</span>
-                </div>
+                <h3 class="artist-name">{row['artist_name']}</h3>
+                <p class="artist-meta">{row['ar_recommendation']} | Score: <strong class="score-value">{row['scouting_score']:.0f}/100</strong></p>
+                <p class="artist-track">🎵 Top Track: {row['top_track_name']}</p>
+                <div class="insight-pill"><span>💡 {row['strategic_insight']}</span></div>
             </div>
             <div style="text-align: right;">
-                <div style="margin-bottom: 10px;">
-                    <div style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase;">Prob. Viralidad 6M</div>
-                    <div style="font-size: 1.5rem; font-weight: 700; color: #0066FF;">{viral}%</div>
-                    <div style="background: #e5e7eb; border-radius: 6px; height: 8px; margin-top: 4px; overflow: hidden;">
-                        <div style="background: linear-gradient(90deg, #0066FF, #4d94ff); width: {viral_pct:.0f}%; height: 100%;"></div>
-                    </div>
+                <div class="stat-block">
+                    <div class="stat-label">Prob. Viralidad 6M</div>
+                    <div class="stat-value-blue">{viral}%</div>
+                    <div class="viral-track"><div class="viral-fill" style="width: {viral_pct:.0f}%;"></div></div>
                 </div>
-                <div style="margin-bottom: 10px;">
-                    <div style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase;">Fans Deezer</div>
-                    <div style="font-size: 1.5rem; font-weight: 700; color: #0066FF;">{fans}</div>
+                <div class="stat-block">
+                    <div class="stat-label">Fans Deezer</div>
+                    <div class="stat-value-blue">{fans}</div>
                 </div>
-                <div style="margin-bottom: 10px;">
-                    <div style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase;">Deezer Rank</div>
-                    <div style="font-size: 1.5rem; font-weight: 700; color: #1f2937;">{rank}</div>
+                <div class="stat-block">
+                    <div class="stat-label">Deezer Rank</div>
+                    <div class="stat-value-dark">{rank}</div>
                 </div>
-                <a href="{row['deezer_link']}" target="_blank" style="color: #0066FF; text-decoration: none; font-weight: 600;">
-                    🔗 Ver en Deezer
-                </a>
+                <a class="deezer-link" href="{row['deezer_link']}" target="_blank">🔗 Ver en Deezer</a>
             </div>
         </div>
     </div>
+    """
+
+
+def dark_neumorphism_css():
+    """Paleta Neumorphism oscura: misma estructura visual, sombras y brillos
+    recalculados para superficie #111827. Se inyecta DESPUÉS del CSS claro,
+    así sus reglas ganan por orden de cascada sin necesidad de !important."""
+    return """
+    <style>
+    /* ================= DARK NEUMORPHISM ================= */
+    .stApp {
+        background: linear-gradient(135deg, #111827 0%, #0b101b 100%);
+        color: #e5e7eb;
+    }
+
+    .neumorphic-card {
+        background: #111827;
+        box-shadow:
+            8px 8px 16px #05070c,
+            -8px -8px 16px #1f2a3d;
+    }
+    .neumorphic-card:hover {
+        box-shadow:
+            12px 12px 24px #05070c,
+            -12px -12px 24px #24314a;
+    }
+
+    .kpi-card {
+        background: linear-gradient(145deg, #182236, #111827);
+        box-shadow:
+            5px 5px 10px #05070c,
+            -5px -5px 10px #1f2a3d;
+    }
+    .kpi-card:hover {
+        box-shadow:
+            8px 8px 16px #05070c,
+            -8px -8px 16px #24314a;
+    }
+    .kpi-value {
+        color: #6ba3ff;
+        text-shadow: 0 0 12px rgba(107, 163, 255, 0.35);
+    }
+    .kpi-label { color: #9ca3af; }
+
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #131a29 0%, #0e1420 100%);
+        box-shadow: 4px 0 10px rgba(0,0,0,0.4);
+    }
+
+    [data-testid="stMetric"] {
+        background: linear-gradient(145deg, #182236, #111827);
+        box-shadow:
+            4px 4px 8px #05070c,
+            -4px -4px 8px #1f2a3d;
+    }
+
+    .stButton > button {
+        background: linear-gradient(145deg, #0066FF, #0052CC);
+        box-shadow:
+            4px 4px 8px #05070c,
+            -4px -4px 8px #1f2a3d;
+    }
+    .stButton > button:hover {
+        box-shadow:
+            6px 6px 12px #05070c,
+            -6px -6px 12px #24314a;
+    }
+
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div > select {
+        background: #111827;
+        color: #e5e7eb;
+        box-shadow:
+            inset 2px 2px 4px #05070c,
+            inset -2px -2px 4px #1f2a3d;
+    }
+
+    h1, h2, h3 { color: #f3f4f6; }
+    p, li, span { color: #d1d5db; }
+
+    /* Internos de la card de artista en oscuro */
+    .artist-name { color: #f3f4f6; }
+    .artist-meta { color: #9ca3af; }
+    .score-value { color: #6ba3ff; }
+    .artist-track { color: #cbd5e1; }
+    .insight-pill {
+        background: rgba(0, 102, 255, 0.12);
+    }
+    .insight-pill span { color: #93c5fd; }
+    .stat-label { color: #9ca3af; }
+    .stat-value-blue { color: #6ba3ff; }
+    .stat-value-dark { color: #f3f4f6; }
+    .viral-track { background: #1f2a3d; }
+    .viral-fill { background: linear-gradient(90deg, #0066FF, #6ba3ff); }
+    .deezer-link { color: #6ba3ff; }
+
+    .artist-photo {
+        box-shadow:
+            4px 4px 8px #05070c,
+            -4px -4px 8px #1f2a3d;
+    }
+
+    hr { border-color: #1f2a3d; }
+
+    /* Widgets nativos: el contenedor de chips del multiselect toma el
+       secondaryBackgroundColor del tema global mediante clases emotion
+       (hashes inestables entre versiones, sin atributos baseweb en 1.64).
+       Transparencia estructural: el gradiente oscuro del sidebar se ve a
+       través, y los chips azules (spans) conservan su acento. */
+    header[data-testid="stHeader"] { background: transparent; }
+    [data-testid="stSidebar"] [data-testid="stMultiSelect"] div {
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stMultiSelect"] input {
+        color: #e5e7eb !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stSlider"] {
+        color: #9ca3af;
+    }
+    </style>
     """
 
 
@@ -373,6 +523,16 @@ def cargar_forecast():
     import forecast_fans
     return forecast_fans.fit_and_forecast(save_png=False)
 
+
+# ── Tema claro/oscuro (Neumorphism) ─────────────────────────────────────
+# La preferencia vive en st.session_state: persiste durante la sesión y el
+# toggle la cambia al instante (re-render con la hoja oscura inyectada).
+if "tema_oscuro" not in st.session_state:
+    st.session_state.tema_oscuro = False
+
+st.sidebar.toggle("🌙 Modo oscuro", key="tema_oscuro")
+if st.session_state.tema_oscuro:
+    st.markdown(dark_neumorphism_css(), unsafe_allow_html=True)
 
 st.sidebar.header("🗂️ Vistas")
 vista_tab = st.sidebar.radio(
