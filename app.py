@@ -28,9 +28,17 @@ def load_custom_css():
        NEUMORPHISM DESIGN SYSTEM
        ========================================== */
 
-    /* Fondo principal con gradiente sutil */
+    /* Fondo principal con gradiente animado */
     .stApp {
         background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+        background-size: 200% 200%;
+        animation: gradientShift 15s ease infinite;
+    }
+
+    @keyframes gradientShift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
     }
 
     /* Cards con efecto Neumorphism */
@@ -42,15 +50,26 @@ def load_custom_css():
             8px 8px 16px #d1d5db,
             -8px -8px 16px #ffffff;
         margin-bottom: 20px;
-        transition: all 0.3s ease;
-        animation: slideIn 0.5s ease-out;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        animation: fadeInUp 0.6s ease-out;
     }
 
     .neumorphic-card:hover {
         box-shadow:
             12px 12px 24px #d1d5db,
             -12px -12px 24px #ffffff;
-        transform: translateY(-2px);
+        transform: translateY(-4px) scale(1.01);
+    }
+
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 
     /* KPIs con estilo premium (grid en un solo bloque DOM: los div de
@@ -70,14 +89,21 @@ def load_custom_css():
             5px 5px 10px #d1d5db,
             -5px -5px 10px #ffffff;
         text-align: center;
-        transition: all 0.3s ease;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        animation: fadeInUp 0.6s ease-out both;
     }
 
+    /* Entrada escalonada de los KPIs */
+    .kpi-card:nth-child(1) { animation-delay: 0.1s; }
+    .kpi-card:nth-child(2) { animation-delay: 0.2s; }
+    .kpi-card:nth-child(3) { animation-delay: 0.3s; }
+    .kpi-card:nth-child(4) { animation-delay: 0.4s; }
+
     .kpi-card:hover {
-        transform: translateY(-3px);
+        transform: translateY(-5px) scale(1.05);
         box-shadow:
-            8px 8px 16px #d1d5db,
-            -8px -8px 16px #ffffff;
+            10px 10px 20px #d1d5db,
+            -10px -10px 20px #ffffff;
     }
 
     .kpi-value {
@@ -85,7 +111,8 @@ def load_custom_css():
         font-weight: 700;
         color: #0066FF;
         margin: 10px 0;
-        text-shadow: 0 0 10px rgba(0, 102, 255, 0.3);
+        text-shadow: 0 0 15px rgba(0, 102, 255, 0.3);
+        animation: countUp 1s ease-out;
     }
 
     .kpi-label {
@@ -93,6 +120,16 @@ def load_custom_css():
         color: #6b7280;
         text-transform: uppercase;
         letter-spacing: 1px;
+        transition: color 0.3s ease;
+    }
+
+    .kpi-card:hover .kpi-label {
+        color: #0066FF;
+    }
+
+    @keyframes countUp {
+        from { opacity: 0; transform: scale(0.5); }
+        to { opacity: 1; transform: scale(1); }
     }
 
     /* Botones con efecto premium + brillo deslizante */
@@ -118,8 +155,8 @@ def load_custom_css():
         left: -100%;
         width: 100%;
         height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-        transition: left 0.5s;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+        transition: left 0.6s ease;
     }
 
     .stButton > button:hover::before {
@@ -127,10 +164,11 @@ def load_custom_css():
     }
 
     .stButton > button:hover {
-        transform: translateY(-2px);
+        transform: translateY(-3px);
         box-shadow:
-            6px 6px 12px #d1d5db,
-            -6px -6px 12px #ffffff;
+            8px 8px 16px #d1d5db,
+            -8px -8px 16px #ffffff,
+            0 0 20px rgba(0, 102, 255, 0.4);
     }
 
     .stButton > button:active {
@@ -149,7 +187,7 @@ def load_custom_css():
         box-shadow:
             inset 2px 2px 4px #d1d5db,
             inset -2px -2px 4px #ffffff;
-        border: none;
+        border: 2px solid transparent;
         transition: all 0.3s ease;
     }
 
@@ -157,24 +195,36 @@ def load_custom_css():
     .stSelectbox > div > div > select:focus {
         box-shadow:
             inset 3px 3px 6px #d1d5db,
-            inset -3px -3px 6px #ffffff,
-            0 0 0 2px #0066FF;
+            inset -3px -3px 6px #ffffff;
+        border-color: #0066FF;
+        animation: focusPulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes focusPulse {
+        0%, 100% { box-shadow: inset 3px 3px 6px #d1d5db, inset -3px -3px 6px #ffffff, 0 0 0 0 rgba(0, 102, 255, 0.4); }
+        50% { box-shadow: inset 3px 3px 6px #d1d5db, inset -3px -3px 6px #ffffff, 0 0 0 4px rgba(0, 102, 255, 0.2); }
     }
 
     /* Sidebar con gradiente y sombra (selector estable entre versiones) */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #f5f7fa 0%, #e8ecf1 100%);
-        box-shadow: 4px 0 10px rgba(0,0,0,0.05);
+        box-shadow: 4px 0 15px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
     }
 
-    /* Títulos con brillo sutil */
+    /* Títulos con brillo sutil que se intensifica al hover */
     h1, h2, h3 {
         color: #1f2937;
         font-weight: 700;
-        text-shadow: 0 0 20px rgba(0, 102, 255, 0.1);
+        text-shadow: 0 0 20px rgba(0, 102, 255, 0.15);
+        transition: all 0.3s ease;
     }
 
-    /* Métricas nativas con card suave */
+    h1:hover, h2:hover, h3:hover {
+        text-shadow: 0 0 30px rgba(0, 102, 255, 0.3);
+    }
+
+    /* Métricas nativas con card suave y hover */
     [data-testid="stMetric"] {
         background: linear-gradient(145deg, #ffffff, #f0f2f6);
         border-radius: 12px;
@@ -182,6 +232,14 @@ def load_custom_css():
         box-shadow:
             4px 4px 8px #d1d5db,
             -4px -4px 8px #ffffff;
+        transition: all 0.3s ease;
+    }
+
+    [data-testid="stMetric"]:hover {
+        transform: scale(1.05);
+        box-shadow:
+            6px 6px 12px #d1d5db,
+            -6px -6px 12px #ffffff;
     }
 
     /* Animaciones (Fase 3) */
@@ -246,11 +304,159 @@ def load_custom_css():
     .viral-fill {
         background: linear-gradient(90deg, #0066FF, #4d94ff);
         height: 100%;
+        animation: progressFill 1.5s ease-out;
     }
     .deezer-link {
         color: #0066FF;
         text-decoration: none;
         font-weight: 600;
+    }
+
+    /* ================= COMPONENTES PREMIUM ================= */
+
+    /* Spinner de carga */
+    .loading-spinner {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 40px;
+    }
+
+    .spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid #f0f2f6;
+        border-top: 4px solid #0066FF;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        box-shadow:
+            0 0 10px rgba(0, 102, 255, 0.3),
+            inset 0 0 10px rgba(0, 102, 255, 0.1);
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    /* Skeleton loader (efecto tipo Facebook/LinkedIn) */
+    .skeleton {
+        background: linear-gradient(90deg, #f0f2f6 25%, #e8ecf1 50%, #f0f2f6 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite;
+        border-radius: 8px;
+        height: 20px;
+        margin: 10px 0;
+    }
+
+    .skeleton-circle {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        background: linear-gradient(90deg, #f0f2f6 25%, #e8ecf1 50%, #f0f2f6 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite;
+    }
+
+    @keyframes shimmer {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+
+    /* Barra de progreso animada */
+    .progress-bar-container {
+        background: #f0f2f6;
+        border-radius: 10px;
+        padding: 4px;
+        box-shadow:
+            inset 2px 2px 4px #d1d5db,
+            inset -2px -2px 4px #ffffff;
+        margin: 10px 0;
+    }
+
+    .progress-bar {
+        background: linear-gradient(90deg, #0066FF, #0080FF);
+        height: 8px;
+        border-radius: 8px;
+        animation: progressFill 1.5s ease-out;
+        box-shadow: 0 0 10px rgba(0, 102, 255, 0.5);
+    }
+
+    @keyframes progressFill {
+        from { width: 0%; }
+    }
+
+    /* Badge con pulso */
+    .badge-pulse {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        animation: badgePulse 2s infinite;
+    }
+
+    @keyframes badgePulse {
+        0% { box-shadow: 0 0 0 0 rgba(0, 102, 255, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(0, 102, 255, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(0, 102, 255, 0); }
+    }
+
+    /* Efecto shine en fotos: sobre un CONTENEDOR (los <img> son elementos
+       reemplazados y no soportan pseudo-elementos ::after) */
+    .image-shine {
+        position: relative;
+        overflow: hidden;
+        border-radius: 16px;
+    }
+
+    .image-shine img {
+        display: block;
+        width: 100%;
+        height: auto;
+        border-radius: 16px;
+    }
+
+    .image-shine::after {
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: linear-gradient(
+            to bottom right,
+            rgba(255,255,255,0) 0%,
+            rgba(255,255,255,0.1) 50%,
+            rgba(255,255,255,0) 100%
+        );
+        transform: rotate(45deg);
+        animation: shine 3s infinite;
+        pointer-events: none;
+    }
+
+    @keyframes shine {
+        0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+        100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+    }
+
+    /* Scrollbar personalizada */
+    ::-webkit-scrollbar {
+        width: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: #f0f2f6;
+        border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, #0066FF, #0052CC);
+        border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, #0080FF, #0066FF);
     }
     </style>
     """
@@ -280,16 +486,24 @@ def artist_card_html(row, photo_data_uri=None):
     viral = f"{row['probabilidad_viral']:.1f}"
     viral_pct = min(row["probabilidad_viral"] / 100.0, 1.0) * 100
     if photo_data_uri is None:
-        photo = f'<img class="artist-photo" src="{row["picture_url"]}" alt="{row["artist_name"]}">'
+        img_html = f'<img class="artist-photo" src="{row["picture_url"]}" alt="{row["artist_name"]}">'
     else:
-        photo = f'<img class="artist-photo" src="{photo_data_uri}" alt="{row["artist_name"]}">'
+        img_html = f'<img class="artist-photo" src="{photo_data_uri}" alt="{row["artist_name"]}">'
+    # Shine sobre un CONTENEDOR: los <img> (elementos reemplazados) no
+    # soportan pseudo-elementos ::after
+    photo = f'<div class="image-shine">{img_html}</div>'
+    badge = display_badge_with_pulse(
+        row["ar_recommendation"],
+        badge_color_for(row["ar_recommendation"]),
+        inline=True,
+    )
     return f"""
     <div class="neumorphic-card">
         <div style="display: grid; grid-template-columns: 100px 1fr 220px; gap: 20px; align-items: center;">
             <div>{photo}</div>
             <div>
                 <h3 class="artist-name">{row['artist_name']}</h3>
-                <p class="artist-meta">{row['ar_recommendation']} | Score: <strong class="score-value">{row['scouting_score']:.0f}/100</strong></p>
+                <p class="artist-meta">{badge} | Score: <strong class="score-value">{row['scouting_score']:.0f}/100</strong></p>
                 <p class="artist-track">🎵 Top Track: {row['top_track_name']}</p>
                 <div class="insight-pill"><span>💡 {row['strategic_insight']}</span></div>
             </div>
@@ -312,6 +526,88 @@ def artist_card_html(row, photo_data_uri=None):
         </div>
     </div>
     """
+
+
+def show_loading_spinner(message, slot=None):
+    """Spinner premium. Pásale un st.empty() como slot: al escribir encima
+    el spinner desaparece (el flujo normal de Streamlit NO borra los
+    st.markdown de la corrida anterior)."""
+    target = slot if slot is not None else st
+    target.markdown(
+        f"""
+        <div class="loading-spinner">
+            <div>
+                <div class="spinner"></div>
+                <p style="text-align: center; color: #6b7280; margin-top: 15px; font-weight: 500;">
+                    {message}
+                </p>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def show_skeleton_loaders(rows=3, slot=None):
+    """Skeletons estilo Facebook/LinkedIn: foto-círculo + líneas de texto.
+    Compone todas las filas en UN solo bloque (y opcionalmente en un slot
+    para poder limpiarlas cuando llegan los datos reales)."""
+    row_html = """
+        <div style="display: grid; grid-template-columns: 100px 1fr 200px; gap: 20px; margin-bottom: 20px;">
+            <div class="skeleton-circle"></div>
+            <div>
+                <div class="skeleton" style="width: 60%;"></div>
+                <div class="skeleton" style="width: 40%;"></div>
+                <div class="skeleton" style="width: 80%;"></div>
+            </div>
+            <div>
+                <div class="skeleton" style="width: 80%;"></div>
+                <div class="skeleton" style="width: 60%;"></div>
+            </div>
+        </div>
+    """
+    target = slot if slot is not None else st
+    target.markdown(row_html * rows, unsafe_allow_html=True)
+
+
+def display_animated_progress(value, max_value=100, label="Progreso"):
+    """Barra de progreso neumórfica animada (progressFill desde 0%)."""
+    percentage = (value / max_value) * 100
+    st.markdown(
+        f"""
+        <div style="margin: 15px 0;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                <span style="font-size: 0.85rem; color: #6b7280; font-weight: 500;">{label}</span>
+                <span style="font-size: 0.85rem; color: #0066FF; font-weight: 600;">{percentage:.1f}%</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" style="width: {percentage}%;"></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def badge_color_for(recommendation):
+    """Color semántico del badge según la recomendación A&R."""
+    if recommendation == "🔥 FIRMAR AHORA":
+        return "#FF4444"
+    if recommendation == "👀 OBSERVAR":
+        return "#FFA500"
+    return "#6B7280"
+
+
+def display_badge_with_pulse(text, color="#0066FF", inline=False):
+    """Badge con pulso. Con inline=True devuelve el HTML (para componer dentro
+    de una card) en vez de escribir un bloque propio."""
+    html = (
+        f'<span class="badge-pulse" '
+        f'style="background-color: {color}; color: white;">{text}</span>'
+    )
+    if inline:
+        return html
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def dark_neumorphism_css():
@@ -413,6 +709,27 @@ def dark_neumorphism_css():
             -4px -4px 8px #1f2a3d;
     }
 
+    /* Componentes premium en oscuro */
+    .spinner {
+        border-color: #1f2a3d;
+        border-top-color: #6ba3ff;
+        box-shadow:
+            0 0 10px rgba(107, 163, 255, 0.3),
+            inset 0 0 10px rgba(107, 163, 255, 0.1);
+    }
+    .loading-spinner p { color: #9ca3af !important; }
+    .skeleton,
+    .skeleton-circle {
+        background: linear-gradient(90deg, #182236 25%, #1f2a3d 50%, #182236 75%);
+        background-size: 200% 100%;
+    }
+    .progress-bar-container {
+        background: #111827;
+        box-shadow:
+            inset 2px 2px 4px #05070c,
+            inset -2px -2px 4px #1f2a3d;
+    }
+
     hr { border-color: #1f2a3d; }
 
     /* Widgets nativos: el contenedor de chips del multiselect toma el
@@ -451,12 +768,24 @@ def cargar_modelo_ml():
         return None, None
 
 
-modelo_ml, feature_names = cargar_modelo_ml()
-
 st.title("🎵 A&R Scouting Command Center")
 st.markdown(
     "**Data Product con datos REALES de Deezer API para identificación de talento musical**"
 )
+
+# Estado de carga premium SOLO en la primera carga de la sesión: en los
+# re-renders (cambios de filtro, toggle) el spinner parpadearía sin
+# necesidad — Streamlit re-ejecuta todo el script en cada interacción.
+primera_carga = "carga_completada" not in st.session_state
+load_slot = st.empty() if primera_carga else None
+if primera_carga:
+    show_loading_spinner(
+        "Conectando con Deezer API y calculando predicciones de ML...",
+        slot=load_slot,
+    )
+modelo_ml, feature_names = cargar_modelo_ml()
+if primera_carga:
+    show_skeleton_loaders(rows=3, slot=load_slot)
 
 # Conectar a DuckDB con AUTO-REPARACIÓN: si el warehouse no existe (servidor
 # limpio, p. ej. Render), se reconstruye en segundos desde el seed versionado
@@ -508,6 +837,11 @@ if modelo_ml is not None:
 else:
     df["probabilidad_viral"] = 0.0
 
+# Datos y predicciones listas: fuera spinner y skeletons (solo si hubo)
+if primera_carga:
+    load_slot.empty()
+    st.session_state.carga_completada = True
+
 # ==========================================
 # FORECASTING DE CRECIMIENTO (Módulo 5)
 # ==========================================
@@ -547,9 +881,22 @@ vista_tab = st.sidebar.radio(
 # debajo de toda la página de Scouting)
 # ==========================================
 if vista_tab == "🔮 Forecasting 6M":
+    # Spinner solo si el forecast no está en cache de proceso (cache hit =
+    # flash innecesario; además Streamlit muestra su spinner nativo)
+    fc_en_cache = "forecast_en_cache" in st.session_state
+    fc_slot = None if fc_en_cache else st.empty()
+    if not fc_en_cache:
+        show_loading_spinner(
+            "Entrenando Prophet y proyectando 6 meses...", slot=fc_slot
+        )
     try:
         fc = cargar_forecast()
+        st.session_state.forecast_en_cache = True
+        if fc_slot is not None:
+            fc_slot.empty()
     except Exception as e:
+        if fc_slot is not None:
+            fc_slot.empty()
         st.error(f"⚠️ No se pudo generar el forecast: {e}")
         st.stop()
 
