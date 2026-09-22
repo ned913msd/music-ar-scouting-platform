@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import duckdb
+import joblib
 import os
 from PIL import Image
 import requests
@@ -35,8 +36,25 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Carga del modelo ML (serializado desde el notebook con joblib) — cacheado
+# para que se deserialice una sola vez por sesión, no en cada re-render
+@st.cache_resource
+def cargar_modelo_ml():
+    try:
+        modelo = joblib.load("modelo_viralidad_rf.pkl")
+        features = joblib.load("feature_names.pkl")
+        return modelo, features
+    except FileNotFoundError:
+        st.warning("⚠️ Modelo no encontrado. Ejecuta el Notebook primero.")
+        return None, None
+
+
+modelo_ml, feature_names = cargar_modelo_ml()
+
 st.title("🎵 A&R Scouting Command Center")
-st.markdown("**Data Product con datos REALES de Deezer API para identificación de talento musical**")
+st.markdown(
+    "**Data Product con datos REALES de Deezer API para identificación de talento musical**"
+)
 
 # Conectar a DuckDB con AUTO-REPARACIÓN: si el warehouse no existe (servidor
 # limpio, p. ej. Render), se reconstruye en segundos desde el seed versionado
@@ -57,6 +75,36 @@ try:
 except Exception:
     st.error("❌ No se encontraron datos. Ejecuta primero: `dbt seed && dbt run`")
     st.stop()
+
+# ==========================================
+# PREDICCIÓN DE MACHINE LEARNING EN TIEMPO REAL
+# ==========================================
+if modelo_ml is not None:
+    # Proxy de crecimiento mensual calibrado al dominio del entrenamiento
+    # U(-0.05, 0.30): ratio de conversión oyente→fan escalado y acotado
+    # (el modelo aprendió con tasas reales, no con valores fuera de dominio)
+    growth_proxy = (df["fan_rank_ratio"] / 15.0).clip(-0.05, 0.30)
+
+    # Preparamos los datos para que coincidan con el entrenamiento
+    df_ml_input = pd.DataFrame(
+        {
+            "current_fans": df["deezer_fans"],
+            "current_rank": df["deezer_rank"],
+            "track_rank": df["top_track_rank"],
+            "monthly_growth_rate": growth_proxy,
+            "genero_encoded": 0,  # valor por defecto para simplificar el demo
+        }
+    )
+
+    # Aseguramos el orden exacto de columnas del entrenamiento
+    df_ml_input = df_ml_input[feature_names]
+
+    # Probabilidad de la clase "1" (Viral en 6 meses)
+    df["probabilidad_viral"] = (
+        modelo_ml.predict_proba(df_ml_input)[:, 1] * 100
+    ).round(1)
+else:
+    df["probabilidad_viral"] = 0.0
 
 # Sidebar - Filtros (literales con emoji: en el pegado del tutorial se perdieron)
 st.sidebar.header("🎛️ Filtros de Búsqueda")
@@ -117,6 +165,12 @@ for idx, row in top_10.iterrows():
         st.info(f"💡 {row['strategic_insight']}")
 
     with col3:
+        # Predicción ML: probabilidad de duplicar fans en 6 meses
+        st.metric(
+            "Probabilidad de Viralidad (6M)",
+            f"{row['probabilidad_viral']:.1f}%",
+        )
+        st.progress(min(row["probabilidad_viral"] / 100, 1.0))
         st.metric("Fans Deezer", f"{int(row['deezer_fans']):,}")
         st.metric("Deezer Rank", f"{int(row['deezer_rank']):,}")
         st.metric("Track Rank", f"{int(row['top_track_rank']):,}")
@@ -132,6 +186,7 @@ st.dataframe(
         [
             "artist_name",
             "scouting_score",
+            "probabilidad_viral",
             "ar_recommendation",
             "deezer_fans",
             "deezer_rank",
@@ -143,6 +198,7 @@ st.dataframe(
         columns={
             "artist_name": "Artista",
             "scouting_score": "Score",
+            "probabilidad_viral": "Prob. Viral 6M",
             "ar_recommendation": "Recomendación",
             "deezer_fans": "Fans",
             "deezer_rank": "Rank",

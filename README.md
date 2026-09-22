@@ -200,6 +200,10 @@ current_fans          2.03%  ← el tamaño actual casi no predice
 
 > 💡 La lección de negocio, ahora con números: la tasa de crecimiento mensual es **~38× más predictiva** que el número de fans actuales. Un artista con 5.000 fans creciendo +25% mensual vale más que uno estancado en 100.000.
 
+### 🔗 Del notebook a producción (serialización ML)
+
+El modelo se serializa con `joblib` (`modelo_viralidad_rf.pkl` + `feature_names.pkl`) desde la última celda del notebook, y el dashboard lo carga cacheado (`@st.cache_resource`) para predecir en tiempo real: cada artista muestra su **Probabilidad de Viralidad (6M)** con barra de progreso, y la tabla completa incluye la columna `Prob. Viral 6M`. El proxy de crecimiento usado en inferencia está **calibrado al dominio de entrenamiento** `U(-0.05, 0.30)` (ratio de conversión oyente→fan escalado), para que los scores sean comparables con lo que el modelo aprendió.
+
 ```bash
 # Abrir el laboratorio (requiere requirements-dev.txt)
 jupyter notebook --notebook-dir notebooks
@@ -222,7 +226,7 @@ Este proyecto demuestra habilidades de Music Data Analyst y Analytics Engineer:
 - [x] Datos reales de streaming vía API pública de Deezer (fans, rank de reproducción, momentum de lanzamientos)
 - [ ] Integración con Spotify Web API (bloqueada por política 2025: exige Premium del dueño de la app — extractor listo)
 - [ ] Web scraping de datos de TikTok y YouTube
-- [ ] Modelo de Machine Learning para predicción de viralidad *(primer Random Forest entrenado: ROC-AUC 0.9242; siguiente paso: integración al dashboard)*
+- [x] Modelo de Machine Learning integrado al dashboard: Random Forest (ROC-AUC 0.9242) serializado con joblib, prediciendo **Probabilidad de Viralidad 6M** por artista en producción
 - [ ] Alertas automáticas cuando un artista entra en "Firmar Ahora"
 - [x] Blueprint de despliegue en la nube (Render) con app auto-reparable (`bootstrap_db.py` + `render.yaml`)
 - [ ] Módulo de touring: cruce con datos geoespaciales para planificación de giras

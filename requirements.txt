@@ -12,3 +12,7 @@ Pillow>=10.0.0
 # Extractores de datos reales
 spotipy>=2.24.0
 python-dotenv>=1.0.0
+
+# ML en producción (carga del modelo serializado desde el notebook)
+scikit-learn>=1.4.0
+joblib>=1.3.0
