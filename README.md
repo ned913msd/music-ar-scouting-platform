@@ -109,32 +109,34 @@ ORDER BY scouting_score DESC;
 
 ### 🎬 Datos en vivo: API real (Deezer)
 
-Además del dataset simulado, el producto extrae **datos reales de streaming** vía la API pública de Deezer (sin API key, sin login y sin Premium): fans reales (`nb_fan`), rank de reproducción real de tracks (0–1M), catálogo de álbumes y fecha de lanzamiento.
+Además del dataset simulado, el producto extrae **datos reales de streaming** vía la API pública de Deezer (sin API key, sin login y sin Premium): fans reales (`nb_fan`), ranks de reproducción de tracks (escala 0–1M) y resolución inteligente de homónimos (coincidencia exacta de nombre + prominencia por fans).
 
 ```bash
-# 10 artistas latino por defecto (o pásale los tuyos como argumentos)
+# 10 artistas emergentes latino por defecto (o pásale los tuyos como argumentos)
 python deezer_data_extractor.py
-python deezer_data_extractor.py "Feid" "Tyla" "Binario"
+python deezer_data_extractor.py "Feid" "Tyla" "Grupo Frontera"
 ```
 
-**Scouting Score con datos reales** (misma estructura 40/30/30):
+**Scouting Score con datos reales** (fórmula ajustada para Deezer, 50/30/20):
 
 | Dimensión | Peso | Métrica real de Deezer |
 |-----------|------|------------------------|
-| Fandom consolidado | 40% | `nb_fan` normalizado (métrica reina: demanda real) |
-| Rank de reproducción | 30% | `rank` del top de tracks (0–1.000.000) |
-| Momentum | 30% | recencia del último lanzamiento (decaimiento exponencial sobre 24 meses) |
+| Rank del artista | 50% | promedio del rank del top-10 de tracks (0–1.000.000) — proxy de fuerza de catálogo, ya que la API dejó de exponer `rank` a nivel artista |
+| Fandom consolidado | 30% | `nb_fan` normalizado (base de fans reales) |
+| Pico del mayor hit | 20% | rank del track más escuchado (escala absoluta 0–1M) |
 
-Resultado de la corrida real (10 artistas, persistido en `real_artists_raw` en DuckDB):
+Resultado de la corrida real sobre artistas emergentes (persistido como snapshot en `real_artists_raw` en DuckDB):
 
-| Artista | Fans reales | Rank top track | Score | Recomendación |
-|---------|------------:|---------------:|------:|---------------|
-| Shakira | 11.720.580 | 990.618 | 99,55 | 🔥 FIRMAR AHORA |
-| J Balvin | 10.340.615 | 889.203 | 91,62 | 🔥 FIRMAR AHORA |
-| Maluma | 8.074.612 | 980.373 | 86,80 | 🔥 FIRMAR AHORA |
-| Bad Bunny | 8.004.135 | 981.279 | 76,60 | 🔥 FIRMAR AHORA |
-| KAROL G | 3.411.804 | 981.639 | 69,82 | 👀 OBSERVAR |
-| Rauw Alejandro | 2.136.840 | 888.515 | 63,78 | 👀 OBSERVAR |
+| Artista | Fans reales | Rank (proxy) | Score | Recomendación |
+|---------|------------:|-------------:|------:|---------------|
+| KAROL G | 3.411.808 | 796.911 | 89,85 | 🔥 FIRMAR AHORA |
+| Myke Towers | 1.705.933 | 662.773 | 63,78 | 👀 OBSERVAR |
+| Bizarrap | 1.124.709 | 614.038 | 56,94 | 👀 OBSERVAR |
+| Feid | 905.383 | 671.329 | 54,83 | 👀 OBSERVAR |
+| Peso Pluma | 507.388 | 658.050 | 53,28 | 👀 OBSERVAR |
+| SAIKO | 53.984 | 452.220 | 34,10 | ⚠️ DESCARTAR |
+
+Lectura de negocio: sobre una lista de emergentes, solo la artista ya consolidada (KAROL G) supera el umbral de firma — el modelo distingue talento en crecimiento de éxito establecido, exactamente el filtro que un equipo de A&R necesita.
 
 ### ☁️ Spotify Web API (estado)
 

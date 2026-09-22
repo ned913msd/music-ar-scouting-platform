@@ -14,11 +14,13 @@
 #   * track['rank']     → popularidad real de reproducción (0..1M)
 #   * track['duration'] → duración en segundos
 #
-# Scouting Score adaptado (misma estructura 40/30/30 del pipeline simulado):
-#   * Fandom consolidado 40% → nb_fan normalizado (métrica reina: demanda real)
-#   * Rank de reproducción 30% → max rank del top de tracks (0..1.000.000)
-#   * Momentum 30% → recencia del último lanzamiento (decaimiento 0-1 sobre
-#     24 meses)
+# Scouting Score (fórmula del curso, ajustada para Deezer):
+#   * Rank del artista 50% → PROMEDIO del rank del top-10 de tracks
+#     (0..1.000.000). Nota honesta: la API ya NO expone 'rank' a nivel
+#     artista (ni en /search ni en /artist/{id}); el promedio del top-10 es
+#     el proxy real de fuerza de catálogo en la misma escala 0-1M.
+#   * Fandom consolidado 30% → nb_fan normalizado (base de fans reales)
+#   * Pico del mayor hit 20% → rank del track más escuchado (0..1M absoluto)
 #
 # Notas técnicas:
 #   * stdout UTF-8 (consola Windows cp1252 + emojis)
@@ -41,7 +43,6 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 
 import os
 import time
-from datetime import datetime, timezone
 
 import duckdb
 import pandas as pd
@@ -78,80 +79,129 @@ def deezer_get(path, **params):
 
 
 # ==========================================
-# FUNCIÓN 1: Obtener datos de un artista por nombre
+# FUNCIÓN 1: Obtener datos de un artista en Deezer
 # ==========================================
-def buscar_artista(nombre_artista):
+def buscar_artista_deezer(nombre_artista):
     """
-    Busca un artista en Deezer y retorna sus datos principales con métricas
-    100% reales: fandom (nb_fan), rank de reproducción del top de tracks y
-    momentum por fecha de su álbum más reciente.
+    Busca un artista en Deezer y retorna sus datos principales + top track.
+    Métricas 100% reales: nb_fan (fans), rank del artista (0..1M) y rank del
+    track más escuchado.
     """
-    results = deezer_get("/search/artist", q=nombre_artista, limit=1)
+    # Traer 5 candidatos: /search/artist puede devolver homónimos (ej. para
+    # "Quevedo" aparecen otro Quevedo, Creed, Bad Gyal...). Prioridad:
+    # coincidencia exacta de nombre (sin tildes/mayúsculas) y, entre ellos,
+    # el más prominente por fans.
+    results = deezer_get("/search/artist", q=nombre_artista, limit=5)
     items = results.get("data", [])
     if not items:
         return None
 
-    artist = items[0]
+    import unicodedata
+
+    def _norm(s):
+        return "".join(
+            c for c in unicodedata.normalize("NFKD", (s or "").casefold())
+            if not unicodedata.combining(c)
+        ).strip()
+
+    exact = [a for a in items if _norm(a["name"]) == _norm(nombre_artista)]
+    pool = exact or items
+    artist = max(pool, key=lambda a: a.get("nb_fan") or 0)
     artist_id = artist["id"]
 
-    # Top de tracks → rank real de reproducción (0..1M)
+    # Top-10 de tracks → proxy de rank de artista (promedio) + mayor hit
     top = deezer_get(f"/artist/{artist_id}/top", limit=10)
     tracks = top.get("data", [])
-    top_rank = max((t.get("rank") or 0) for t in tracks) if tracks else None
-    top_track = tracks[0]["title"] if tracks else "N/A"
-
-    # Álbumes ordenados por fecha (los más nuevos primero) → momentum
-    albums = deezer_get(f"/artist/{artist_id}/albums", limit=50).get("data", [])
-    dates = []
-    for alb in albums:
-        rd = alb.get("release_date")
-        if rd:
-            try:
-                dates.append(datetime.strptime(rd, "%Y-%m-%d"))
-            except ValueError:
-                continue
-    last_release = max(dates) if dates else None
-
-    months_since = None
-    if last_release is not None:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
-        months_since = max(0.0, (now - last_release).days / 30.44)
+    ranks = [t.get("rank") or 0 for t in tracks]
+    artist_rank = round(sum(ranks) / len(ranks)) if ranks else 0
+    top_track = tracks[0] if tracks else {}
 
     return {
         "artist_name": artist["name"],
         "artist_id": artist_id,
-        "genres": "N/D",
-        "followers": artist.get("nb_fan"),
-        "popularity": top_rank,  # en este extractor: rank real de Deezer
-        "monthly_listeners": artist.get("nb_fan"),  # aproximación documentada
-        "top_track": top_track,
-        "top_track_rank": top_rank,
-        "albums_count": artist.get("nb_album"),
-        "last_release_date": last_release.strftime("%Y-%m-%d") if last_release else None,
-        "months_since_release": round(months_since, 1) if months_since is not None else None,
-        "external_url": artist.get("link"),
+        "deezer_fans": artist.get("nb_fan"),
+        "deezer_rank": artist_rank,  # proxy real (0..1M), ver header
+        "picture_url": (
+            artist.get("picture_xl")
+            or artist.get("picture_big")
+            or artist.get("picture_medium")
+        ),
+        "deezer_link": artist.get("link"),
+        "top_track_name": top_track.get("title", "N/A"),
+        "top_track_rank": top_track.get("rank", 0),
+        "top_track_duration": top_track.get("duration", 0),
     }
 
 
 # ==========================================
-# FUNCIÓN 2: Obtener datos de múltiples artistas
+# FUNCIÓN 2: Extraer y Calcular Scouting Score
 # ==========================================
-def extraer_datos_artistas_lista(lista_artistas):
+def extraer_y_calcular_score(lista_artistas):
     """
-    Extrae datos de una lista de artistas y retorna un DataFrame.
+    Extrae datos de una lista de artistas, calcula el Scouting Score
+    (fórmula ajustada para Deezer) y retorna un DataFrame.
     """
     artistas_data = []
 
+    print("🎵 Iniciando extracción de datos de Deezer...\n")
     for artista in lista_artistas:
-        print(f"🎵 Buscando: {artista}...")
-        data = buscar_artista(artista)
+        print(f"Buscando: {artista}...")
+        data = buscar_artista_deezer(artista)
         if data:
             artistas_data.append(data)
-            print(f"✅ {data['artist_name']} - {data['followers']:,} fans reales")
+            print(
+                f"✅ {data['artist_name']} | Fans: {data['deezer_fans']:,}"
+                f" | Rank: {data['deezer_rank']}"
+            )
         else:
-            print(f"❌ No encontrado: {artista}")
+            print(f"⚠️ No encontrado: {artista}")
 
-    return pd.DataFrame(artistas_data)
+    df = pd.DataFrame(artistas_data)
+    if df.empty:
+        return df
+
+    # ==============================================
+    # LÓGICA DE NEGOCIO: Scouting Score con Deezer
+    # ==============================================
+    # Blindaje numérico: asegurar dtypes numéricos antes de normalizar
+    for col in ("deezer_fans", "deezer_rank", "top_track_rank"):
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    # Normalizamos las métricas a escala 0-1
+    df["norm_fans"] = df["deezer_fans"] / df["deezer_fans"].max()
+    df["norm_rank"] = df["deezer_rank"] / 1_000_000  # rank máximo: 1.000.000
+
+    # Fórmula de Scouting Score (Ajustada para Deezer)
+    # Rank (50%) + Fans (30%) + Popularidad del Top Track (20%)
+    df["norm_track_rank"] = df["top_track_rank"] / df["top_track_rank"].max()
+
+    df["scouting_score"] = (
+        (df["norm_rank"] * 0.50)
+        + (df["norm_fans"] * 0.30)
+        + (df["norm_track_rank"] * 0.20)
+    ) * 100
+    df["scouting_score"] = df["scouting_score"].round(2)
+
+    # Clasificación A&R (bins idénticos al pipeline: 0-40 / 40-75 / 75-100)
+    df["ar_recommendation"] = pd.cut(
+        df["scouting_score"],
+        bins=[0, 40, 75, 100],
+        labels=["⚠️ DESCARTAR", "👀 OBSERVAR", "🔥 FIRMAR AHORA"],
+    )
+
+    # Insight estratégico
+    df["strategic_insight"] = df.apply(
+        lambda row: (
+            "Alto Rank + Base de Fans sólida = Éxito consolidado"
+            if row["scouting_score"] > 75
+            else "Crecimiento orgánico detectado, monitorear de cerca"
+            if row["scouting_score"] > 40
+            else "Datos insuficientes o nicho muy específico"
+        ),
+        axis=1,
+    )
+
+    return df
 
 
 # ==========================================
@@ -193,18 +243,21 @@ def calcular_scouting_score_real(df):
 # ==========================================
 # EJECUCIÓN PRINCIPAL
 # ==========================================
+# ==========================================
+# EJECUCIÓN PRINCIPAL
+# ==========================================
 if __name__ == "__main__":
-    # Lista por defecto (los mismos 10 artistas del plan original)
+    # Lista de artistas emergentes (el verdadero caso de uso A&R)
     artistas_a_buscar = [
-        "Bad Bunny",
-        "Karol G",
         "Feid",
+        "Karol G",
         "Peso Pluma",
+        "Mora",
+        "Ryan Castro",
+        "Saiko",
+        "Young Miko",
+        "Quevedo",
         "Bizarrap",
-        "Shakira",
-        "J Balvin",
-        "Maluma",
-        "Rauw Alejandro",
         "Myke Towers",
     ]
 
@@ -218,53 +271,45 @@ if __name__ == "__main__":
                 seen.add(k)
                 artistas_a_buscar.append(a.strip())
 
-    print("🚀 Iniciando extracción de datos REALES vía Deezer API...\n")
-
-    # Extraer datos reales
-    df_deezer = extraer_datos_artistas_lista(artistas_a_buscar)
+    df_deezer = extraer_y_calcular_score(artistas_a_buscar)
 
     if df_deezer.empty:
-        print("❌ No se extrajo ningún artista. Revisa conectividad.")
+        print("❌ No se pudieron extraer datos.")
         sys.exit(1)
 
-    # Calcular Scouting Score
-    df_deezer = calcular_scouting_score_real(df_deezer)
-
-    # Persistir: CSV de export + tabla raw en DuckDB (ELT: dbt transforma)
+    # Guardar CSV (para ingestión/exports) y DuckDB (ELT: dbt transforma)
     base_dir = os.path.dirname(os.path.abspath(__file__))
     csv_path = os.path.join(base_dir, "deezer_artists_data.csv")
     df_deezer.to_csv(csv_path, index=False, encoding="utf-8-sig")
-    print(f"\n💾 CSV: {csv_path}")
+    print(f"\n✅ Datos guardados exitosamente en: {csv_path}")
 
     con = duckdb.connect(AR_DB)
     con.register("deezer_df", df_deezer)
-    con.execute(
-        """
-        CREATE TABLE IF NOT EXISTS real_artists_raw AS
-        SELECT * FROM deezer_df LIMIT 0
-        """
-    )
-    con.execute("DELETE FROM real_artists_raw")
+    # CREATE OR REPLACE: cada extracción es un snapshot completo y evoluciona
+    # limpiamente si el esquema cambia entre corridas.
+    con.execute("CREATE OR REPLACE TABLE real_artists_raw AS SELECT * FROM deezer_df LIMIT 0")
     con.execute("INSERT INTO real_artists_raw SELECT * FROM deezer_df")
     n = con.execute("SELECT COUNT(*) FROM real_artists_raw").fetchone()[0]
     con.close()
     print(f"🦆 DuckDB ({AR_DB}): real_artists_raw → {n} artistas reales")
 
-    # Mostrar resumen
+    # Resumen
     print("\n" + "=" * 80)
-    print("📊 RESUMEN DE ARTISTAS ANALIZADOS (DATOS REALES)")
+    print("📊 RESUMEN DE ARTISTAS ANALIZADOS (DEEZER API)")
     print("=" * 80)
-    print(
-        df_deezer[
-            ["artist_name", "followers", "top_track_rank", "scouting_score", "ar_recommendation"]
-        ].to_string(index=False)
-    )
+    cols_to_show = [
+        "artist_name",
+        "deezer_fans",
+        "deezer_rank",
+        "scouting_score",
+        "ar_recommendation",
+    ]
+    print(df_deezer[cols_to_show].to_string(index=False))
 
-    # Top 3
     print("\n🏆 TOP 3 ARTISTAS POR SCOUTING SCORE:")
     top_3 = df_deezer.nlargest(3, "scouting_score")
     for idx, row in top_3.iterrows():
         print(
-            f"  {row['artist_name']} - Score: {row['scouting_score']:.0f}/100"
+            f"  🔥 {row['artist_name']} | Score: {row['scouting_score']:.0f}/100"
             f" | {row['ar_recommendation']}"
         )
