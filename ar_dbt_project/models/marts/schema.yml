@@ -1,6 +1,55 @@
 version: 2
 
 models:
+  - name: artist_scouting_deezer
+    description: "Ranking de artistas emergentes con Scouting Score calculado a partir de datos REALES de Deezer API. Incluye métricas como Deezer Rank (0-1M, proxy: promedio del top-10 de tracks), número de fans y popularidad del mayor hit. Fórmula: 50% Rank + 30% Fans + 20% Top Track."
+    columns:
+      - name: artist_name
+        description: "Nombre del artista en Deezer"
+        data_tests:
+          - not_null
+          - unique
+
+      - name: deezer_fans
+        description: "Número total de fans en Deezer (métrica de lealtad)"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: deezer_rank
+        description: "Ranking de popularidad en Deezer (0-1,000,000). Mayor es mejor"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1000000
+
+      - name: scouting_score
+        description: "Puntaje de 0-100 calculado con 50% Rank + 30% Fans + 20% Top Track"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+      - name: ar_recommendation
+        description: "Recomendación: FIRMAR AHORA (≥75), OBSERVAR (40-74), DESCARTAR (<40)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['🔥 FIRMAR AHORA', '👀 OBSERVAR', '⚠️ DESCARTAR']
+
+      - name: picture_url
+        description: "URL de la foto del artista en alta resolución"
+
+      - name: deezer_link
+        description: "Link directo al perfil del artista en Deezer"
+
   - name: artist_scouting_ranking
     description: "Ranking de artistas emergentes con Scouting Score para decisiones de A&R. Combina métricas de Spotify (Save Rate, Skip Rate) y TikTok (Viralidad) para identificar talento con potencial de firma."
     columns:

@@ -30,8 +30,9 @@ dbt_packages/
 .cache
 .cache-*
 
-# Exports de datos crudos (no versionar datos)
+# Exports de datos crudos (no versionar datos; los seeds de dbt sí van)
 *.csv
+!ar_dbt_project/seeds/*.csv
 
 # dbt telemetría anónima
 .user.yml

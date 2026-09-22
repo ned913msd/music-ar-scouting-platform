@@ -62,7 +62,7 @@ Patrón **ELT**: el script extrae y carga crudos; toda la lógica de negocio viv
 | **Tiempo de evaluación** | De 2 semanas → 5 minutos | **99% reducción** |
 | **Artistas analizados** | 50 en segundos | Escalabilidad total |
 | **Calibración de scouting** | ~14% "Firmar Ahora" (7/46) | Filtrado de ruido efectivo |
-| **Tests de calidad** | 16/16 PASS | Datos confiables para decidir |
+| **Tests de calidad** | 26/26 PASS | Datos confiables para decidir |
 | **Insights accionables** | 100% automatizados | Decisiones basadas en datos |
 
 ## 🚀 Cómo Usar Este Data Product
@@ -85,12 +85,16 @@ source venv/Scripts/activate
 # 3. Ejecutar el pipeline E+L (50 artistas → DuckDB)
 python pipeline/ar_scouting_pipeline.py
 
-# 4. Transformaciones y tests con dbt
+# 4. Datos reales de Deezer (opcional pero recomendado)
+python deezer_data_extractor.py   # genera el CSV + tabla real_artists_raw en DuckDB
+
+# 5. Transformaciones y tests con dbt (el seed convierte el CSV en tabla)
 dbt deps --project-dir ar_dbt_project --profiles-dir ar_dbt_project
+dbt seed --project-dir ar_dbt_project --profiles-dir ar_dbt_project
 dbt run --project-dir ar_dbt_project --profiles-dir ar_dbt_project
 dbt test --project-dir ar_dbt_project --profiles-dir ar_dbt_project
 
-# 5. Levantar el dashboard
+# 6. Levantar el dashboard
 streamlit run app.py
 ```
 
@@ -101,11 +105,13 @@ Accede en: **http://localhost:8501**
 ### Consulta rápida del Director de A&R
 
 ```sql
-SELECT artist_name, genre, scouting_score, ar_recommendation, strategic_insight
-FROM artist_scouting_ranking
+SELECT artist_name, scouting_score, ar_recommendation, strategic_insight
+FROM artist_scouting_deezer
 WHERE ar_recommendation = '🔥 FIRMAR AHORA'
 ORDER BY scouting_score DESC;
 ```
+
+> El mart `artist_scouting_deezer` es el ranking sobre **datos reales de Deezer** (sección siguiente); `artist_scouting_ranking` conserva el modelo del dataset simulado.
 
 ### 🎬 Datos en vivo: API real (Deezer)
 
@@ -138,6 +144,10 @@ Resultado de la corrida real sobre artistas emergentes (persistido como snapshot
 
 Lectura de negocio: sobre una lista de emergentes, solo la artista ya consolidada (KAROL G) supera el umbral de firma — el modelo distingue talento en crecimiento de éxito establecido, exactamente el filtro que un equipo de A&R necesita.
 
+#### Del CSV al warehouse: `dbt seed` → mart `artist_scouting_deezer`
+
+El CSV generado se versiona como **seed de dbt** (`ar_dbt_project/seeds/`) y se convierte en tabla con `dbt seed`. El mart `artist_scouting_deezer` calcula el Scouting Score en SQL puro (50/30/20) con clamping de rangos, y el dashboard de Streamlit lo consume directamente: **fotos reales** de los artistas desde la CDN de Deezer, métricas por artista, link al perfil, filtros por recomendación/score y exportación CSV. Con los datos reales cargados: **26/26 tests en verde** (fans/rank en rango 0–1M, nombres únicos, recomendaciones válidas).
+
 ### ☁️ Spotify Web API (estado)
 
 El extractor `spotify_data_extractor.py` está listo (Spotipy + `.env` + Client Credentials, sin ventana de navegador), pero **la política 2025 de Spotify exige que el dueño de la app tenga suscripción Premium activa** para permitir llamadas a la Web API. Al activar Premium, el script funciona tal cual está. Además, el endpoint `audio-features` fue deprecado por Spotify (27-11-2025); el extractor lo degrada con valores neutros.
@@ -152,7 +162,7 @@ Este proyecto demuestra habilidades de Music Data Analyst y Analytics Engineer:
 - ✅ **Data Engineering**: pipeline ETL automatizado con Python hacia DuckDB + extractores de APIs reales (Deezer) con throttling y reintentos
 - ✅ **API Integration**: consumo de Web APIs públicas con manejo de rate limits, deprecación de endpoints (audio-features) y políticas de acceso (Spotify Premium gate)
 - ✅ **Analytics Engineering**: modelado con dbt (staging → marts), patrón ELT y grafo de dependencias
-- ✅ **Data Quality**: 16 tests automatizados (rangos, valores aceptados, unicidad) que ya cazaron un bug real de porcentajes
+- ✅ **Data Quality**: 26 tests automatizados (rangos 0–100 y 0–1M, valores aceptados, unicidad) que ya cazaron un bug real de porcentajes
 - ✅ **Product Management**: de problema de negocio → solución técnica → valor medible
 - ✅ **UX-UI Design**: dashboard intuitivo con filtros, KPIs, top 10 y exportación CSV
 
