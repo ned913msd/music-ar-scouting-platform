@@ -40,7 +40,7 @@ Desarrollé un **Data Product end-to-end** que:
 | **Extracción** | Python (Pandas, NumPy, Requests, Spotipy) | Pipeline ELT, simulación de APIs de monitoreo y extractores de datos reales (Deezer / Spotify) |
 | **Almacenamiento** | DuckDB | Data warehouse analítico local |
 | **Transformación** | dbt-core (+ dbt_utils) | Modelado, Scouting Score y tests de calidad |
-| **Visualización** | Streamlit | Dashboard interactivo para stakeholders |
+| **Visualización** | Streamlit | Dashboard interactivo para stakeholders, auto-reparable en la nube |
 | **Control de Versiones** | Git/GitHub | Documentación y colaboración |
 
 ## 📊 Arquitectura del Producto
@@ -78,7 +78,7 @@ Patrón **ELT**: el script extrae y carga crudos; toda la lógica de negocio viv
 git clone https://github.com/ned913msd/music-ar-scouting-platform.git
 cd music-ar-scouting-platform
 
-# 2. Crear el entorno e instalar dependencias (Windows/Git Bash)
+# 2. Crear el entorno e instalar dependencias de desarrollo (Windows/Git Bash)
 bash setup.sh
 source venv/Scripts/activate
 
@@ -100,7 +100,15 @@ streamlit run app.py
 
 Accede en: **http://localhost:8501**
 
-> 💾 Por defecto el warehouse vive en `Desktop/BASES DE DATOS DE PRUEBAS/music_ar_product.duckdb` (convención del equipo). Para apuntar a otra ruta usa la variable de entorno `MUSIC_AR_DB_PATH`.
+> 💾 Resolución de la ruta del warehouse (en este orden): variable `MUSIC_AR_DB_PATH` → carpeta canónica del equipo (`Desktop/BASES DE DATOS DE PRUEBAS/`) → raíz del repo (portable, la nube).
+
+## ☁️ Despliegue en la nube (Render) con app auto-reparable
+
+El repo incluye `render.yaml` (blueprint): en Render → **New → Blueprint**, y el servicio se crea con build/start y variables ya configuradas.
+
+La clave es `bootstrap_db.py`: si el contenedor limpio no encuentra el warehouse DuckDB, lo **reconstruye en segundos desde el seed versionado en el repo** (`ar_dbt_project/seeds/deezer_artists_data.csv`) replicando exactamente la lógica de scoring del mart dbt (50/30/20). Por eso la nube **no necesita dbt** (`requirements.txt` = runtime; `requirements-dev.txt` = dbt para desarrollo), la imagen instala rápido y la app siempre arranca, sin importar cuántas veces se reinicie el servidor. Verificado: bootstrap idempotente en directorio limpio, y el score reconstruido (KAROL G 89.85 🔥) es idéntico al del mart dbt.
+
+Para probar la auto-reparación en local: `python bootstrap_db.py` (CLI de verificación).
 
 ### Consulta rápida del Director de A&R
 
@@ -173,7 +181,7 @@ Este proyecto demuestra habilidades de Music Data Analyst y Analytics Engineer:
 - [ ] Web scraping de datos de TikTok y YouTube
 - [ ] Modelo de Machine Learning para predicción de viralidad
 - [ ] Alertas automáticas cuando un artista entra en "Firmar Ahora"
-- [ ] Despliegue en la nube (Streamlit Cloud)
+- [x] Blueprint de despliegue en la nube (Render) con app auto-reparable (`bootstrap_db.py` + `render.yaml`)
 - [ ] Módulo de touring: cruce con datos geoespaciales para planificación de giras
 
 ## 👤 Sobre el Autor

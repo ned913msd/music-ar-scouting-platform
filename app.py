@@ -38,14 +38,20 @@ st.markdown(
 st.title("🎵 A&R Scouting Command Center")
 st.markdown("**Data Product con datos REALES de Deezer API para identificación de talento musical**")
 
-# Conectar a DuckDB (warehouse canónico del equipo; portable vía MUSIC_AR_DB_PATH)
-AR_DB = os.environ.get(
-    "MUSIC_AR_DB_PATH",
-    r"C:\Users\LENOVO\Desktop\BASES DE DATOS DE PRUEBAS\music_ar_product.duckdb",
-)
+# Conectar a DuckDB con AUTO-REPARACIÓN: si el warehouse no existe (servidor
+# limpio, p. ej. Render), se reconstruye en segundos desde el seed versionado
+# en el repo con la misma lógica de scoring del mart dbt (bootstrap_db.py).
+import bootstrap_db
+
+AR_DB = bootstrap_db.resolve_db_path()
+if bootstrap_db.ensure_database(AR_DB):
+    st.info("⚙️ Inicializando base de datos en la nube... (solo la primera vez)")
+    st.success("✅ ¡Base de datos inicializada con éxito!")
+bootstrap_db.ensure_table(AR_DB)
+
 conn = duckdb.connect(AR_DB, read_only=True)
 
-# Cargar datos del modelo dbt
+# Cargar datos del modelo (creado por dbt o reconstruido por el bootstrap)
 try:
     df = pd.read_sql_query("SELECT * FROM artist_scouting_deezer", conn)
 except Exception:

@@ -1,0 +1,8 @@
+# Music A&R Data Product — dependencias de DESARROLLO
+# Transformaciones y tests con dbt (no se necesitan en la nube: el bootstrap
+# reconstruye el warehouse desde el seed sin dbt).
+# ⚠️ Requiere Python 3.10–3.12: dbt aún no soporta 3.13+.
+
+-r requirements.txt
+dbt-core>=1.7.0
+dbt-duckdb>=1.7.0

@@ -51,6 +51,7 @@ fi
 source "$ACTIVATE"
 
 python -m pip install --upgrade pip --quiet
-pip install -r requirements.txt
+# Desarrollo: runtime + dbt (la nube solo instala requirements.txt)
+pip install -r requirements-dev.txt
 
 echo "✅ ¡Listo! Ejecuta 'source $ACTIVATE' para comenzar."

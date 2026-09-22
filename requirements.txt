@@ -1,15 +1,14 @@
-# Music A&R Data Product — entorno de desarrollo (dbt + DuckDB + análisis)
-# Instalar con: bash setup.sh   (crea el venv e instala todo)
-#
-# ⚠️ Requiere Python 3.10–3.12: dbt aún no soporta 3.13/3.14.
-#    setup.sh selecciona automáticamente una versión compatible.
+# Music A&R Data Product — dependencias de RUNTIME
+# (app de Streamlit + extractores; esto es lo que instala Render / la nube)
+# Para desarrollo (dbt, seeds, tests): ver requirements-dev.txt y setup.sh
 
-dbt-core>=1.7.0
-dbt-duckdb>=1.7.0
-duckdb>=1.0.0
+streamlit>=1.36.0
 pandas>=2.0.0
 numpy>=1.24.0
-streamlit>=1.36.0
+duckdb>=1.0.0
 requests>=2.31.0
+Pillow>=10.0.0
+
+# Extractores de datos reales
 spotipy>=2.24.0
 python-dotenv>=1.0.0

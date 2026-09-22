@@ -1,0 +1,26 @@
+# ============================================================================
+# render.yaml — Blueprint de despliegue en Render
+# Deploy con un clic: https://dashboard.render.com/blueprint-instance/new
+# Render detecta este archivo y crea el servicio ya configurado.
+#
+# La app es auto-reparable: si el warehouse DuckDB no existe en el contenedor
+# limpio, bootstrap_db.py lo reconstruye desde el seed versionado en el repo
+# (ar_dbt_project/seeds/deezer_artists_data.csv) en segundos — sin dbt en la
+# nube, la imagen se instala y arranca rápido.
+# ============================================================================
+
+services:
+  - type: web
+    name: ar-scouting-command-center
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      - key: MUSIC_AR_DB_PATH
+        value: /opt/render/project/src/music_ar_product.duckdb
+    # Nota: el disco efímero de Render borra la BD en cada redeploy; no importa:
+    # el bootstrap la reconstruye automáticamente desde el seed del repo.
