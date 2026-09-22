@@ -5,6 +5,7 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+.ipynb_checkpoints/
 
 # Bases de datos locales (no versionar datos; el warehouse vive en BASES DE DATOS DE PRUEBAS)
 *.duckdb

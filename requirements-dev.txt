@@ -6,3 +6,9 @@
 -r requirements.txt
 dbt-core>=1.7.0
 dbt-duckdb>=1.7.0
+
+# Laboratorio de ML (Módulo 4)
+scikit-learn>=1.4.0
+matplotlib>=3.8.0
+seaborn>=0.13.0
+jupyter>=1.0.0

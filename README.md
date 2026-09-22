@@ -169,6 +169,22 @@ El extractor `spotify_data_extractor.py` está listo (Spotipy + `.env` + Client 
 
 > 🔐 Crea tu propio `.env` (no versionado) con `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` y `SPOTIFY_REDIRECT_URI=http://127.0.0.1:8501`.
 
+## 🧪 Módulo 4 — ML: predicción de viralidad (en curso)
+
+El dashboard dice *"cómo están los artistas hoy"*; el laboratorio de ML construye la respuesta a *"¿quién explotará en 6 meses?"* — firmar talento antes de que su precio suba.
+
+**`notebooks/01_virality_prediction.ipynb`** — hipótesis definida con Product Thinking:
+
+- **Objetivo**: predecir >70% de probabilidad de duplicar `deezer_fans` en 6 meses.
+- **Features**: Deezer Rank actual · ratio de crecimiento de fans · popularidad del top track vs. promedio del género.
+- **Target**: `is_viral` (1/0).
+- **Datos actuales**: 10 artistas reales del warehouse (para diseño de features); la siguiente fase genera dataset sintético de 10.000 artistas con series de tiempo para entrenar (baseline logístico → Random Forest / XGBoost).
+
+```bash
+# Abrir el laboratorio (requiere requirements-dev.txt)
+jupyter notebook --notebook-dir notebooks
+```
+
 ## 🎓 Competencias Demostradas
 
 Este proyecto demuestra habilidades de Music Data Analyst y Analytics Engineer:
@@ -186,7 +202,7 @@ Este proyecto demuestra habilidades de Music Data Analyst y Analytics Engineer:
 - [x] Datos reales de streaming vía API pública de Deezer (fans, rank de reproducción, momentum de lanzamientos)
 - [ ] Integración con Spotify Web API (bloqueada por política 2025: exige Premium del dueño de la app — extractor listo)
 - [ ] Web scraping de datos de TikTok y YouTube
-- [ ] Modelo de Machine Learning para predicción de viralidad
+- [ ] Modelo de Machine Learning para predicción de viralidad *(en curso: notebook y hipótesis definidos, dataset de entrenamiento en construcción)*
 - [ ] Alertas automáticas cuando un artista entra en "Firmar Ahora"
 - [x] Blueprint de despliegue en la nube (Render) con app auto-reparable (`bootstrap_db.py` + `render.yaml`)
 - [ ] Módulo de touring: cruce con datos geoespaciales para planificación de giras
