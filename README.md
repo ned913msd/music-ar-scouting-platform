@@ -236,6 +236,15 @@ El workflow **`.github/workflows/update_data.yml`** despierta cada lunes 13:00 U
 - Corrida de verificación con datos reales en movimiento: KAROL G +120 fans, Feid +91, Myke Towers +92 desde el snapshot anterior → seed → `dbt seed --full-refresh` → mart reconstruido → **26/26 tests PASS**.
 - Nota de ingeniería: dbt-duckdb infiere el esquema del seed desde la tabla ya existente en el warehouse; al cambiar las columnas del CSV hay que usar `dbt seed --full-refresh` para que la tabla se recree desde el archivo.
 
+### Alertas proactivas de A&R (Telegram)
+
+**`scripts/send_ar_alerts.py`** — el sistema ya no solo actualiza: **avisa**. El mismo workflow de los lunes repasa el seed fresco y notifica por Telegram los artistas en 🔥 FIRMAR AHORA, con formato HTML (fans, rank, score y link directo a Deezer). Si nadie cruza el umbral, también envía: un lunes sin notificación no debe ser indistinguible de un robot caído.
+
+- **Una sola fórmula, cero divergencia**: la alerta recalcula el Scouting Score replicando el mart dbt (pesos 50/30/20, umbral 75, clasificación sobre el valor sin redondear). Verificado programáticamente: scores y clasificaciones **idénticos** a `artist_scouting_deezer` en los 10 artistas. La corrección clave sobre el tutorial: su filtro ad-hoc (`rank < 200k` + `fans > 1M`) es una regla distinta del dashboard — una alerta que no coincide con el producto es un bug de negocio.
+- **Seguridad ante todo**: el token y el chat ID viven SOLO como Secrets del repo (`TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` en Settings → Secrets and variables → Actions). Faltan credenciales = exit 1 en rojo en CI, nunca un warning silencioso.
+- **Delta de fans semanal**: con `TELEGRAM_INCLUIR_DELTA=1` el mensaje incluye el cambio de fans vs. el snapshot anterior — que en CI vive en git HEAD, porque `daily_update` ya reescribió el seed cuando la alerta corre.
+- Prueba de fuego superada: envío real verificado contra la API de Telegram con el portafolio completo evaluado (KAROL G 89.61 → FIRMAR AHORA).
+
 ### Forecasting de fans con Prophet
 
 **`scripts/forecast_fans.py`** entrena Prophet (Meta) con un histórico mensual de fans y proyecta **6 meses hacia adelante**; el dashboard lo expone en la pestaña **📈 Forecasting** (con `st.cache_data`: el plan gratuito de Render no paga el re-entrenamiento en cada visita).

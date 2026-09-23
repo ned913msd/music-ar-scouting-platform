@@ -35,6 +35,19 @@ jobs:
       - name: Ejecutar script de actualización
         run: python scripts/daily_update.py
 
+      # Alertas proactivas: repasa el seed fresco y notifica por Telegram los
+      # artistas en FIRMAR AHORA (misma fórmula que el mart de dbt). Los
+      # credenciales viven SOLO como Secrets del repo (Settings → Secrets and
+      # variables → Actions): nunca en el código.
+      - name: Ejecutar sistema de alertas A&R
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # El snapshot anterior vive en git HEAD (daily_update ya reescribió
+          # el seed): activa el delta de fans en el mensaje.
+          TELEGRAM_INCLUIR_DELTA: '1'
+        run: python scripts/send_ar_alerts.py
+
       - name: Guardar cambios en GitHub
         run: |
           git config user.name 'github-actions[bot]'
