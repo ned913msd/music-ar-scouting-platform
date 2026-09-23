@@ -115,6 +115,12 @@ def load_custom_css():
         animation: countUp 1s ease-out;
     }
 
+    /* Valores largos ($3,190,540 / nombres de ciudad): a 2.5rem se parten en
+       dos líneas dentro de la card — tamaño compacto que sí cabe */
+    .kpi-value.kpi-value-sm {
+        font-size: 1.7rem;
+    }
+
     .kpi-label {
         font-size: 0.9rem;
         color: #6b7280;
@@ -630,7 +636,7 @@ def display_kpi_grid(kpis):
     envuelve cada st.markdown en su propio div del DOM)."""
     cards = "".join(
         f'<div class="kpi-card"><div class="kpi-label">{icon} {label}</div>'
-        f'<div class="kpi-value">{value}</div></div>'
+        f'<div class="kpi-value{" kpi-value-sm" if len(str(value)) > 8 else ""}">{value}</div></div>'
         for label, value, icon in kpis
     )
     st.markdown(
@@ -1048,9 +1054,147 @@ if st.session_state.tema_oscuro:
 st.sidebar.header("🗂️ Vistas")
 vista_tab = st.sidebar.radio(
     "Selecciona la vista:",
-    options=["🎯 Scouting", "🔮 Forecasting 6M"],
+    options=["🎯 Scouting", "🔮 Forecasting 6M", "🌍 Touring"],
     label_visibility="collapsed",
 )
+
+# Motores de módulos: scripts/ al path ANTES de importar (el import directo
+# 'from scripts.touring_engine import ...' rompe cuando el CWD de la app no
+# es la raíz del repo — p.ej. el contenedor de Render)
+import sys
+
+_scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
+if _scripts_dir not in sys.path:
+    sys.path.insert(0, _scripts_dir)
+from touring_engine import calcular_ruta_touring, resumen_gira
+
+# ==========================================
+# VISTA 3: TOURING — página independiente (mismo despacho que Forecasting)
+# ==========================================
+if vista_tab == "🌍 Touring":
+    st.subheader("🌍 Touring Recommendation Engine")
+    st.markdown(
+        "**Simulación de mercado geoespacial**: la API pública de Deezer no "
+        "expone fans por ciudad (dato premium), así que la demanda se modela "
+        "con el tamaño de mercado de cada ciudad y la conversión fan→ticket "
+        "de la industria. Σ fans por ciudad = fans reales del artista "
+        "(reparto proporcional conservativo)."
+    )
+
+    opciones_tour = (
+        df.sort_values("scouting_score", ascending=False)["artist_name"]
+        .tolist()
+    )
+    artista_seleccionado = st.selectbox(
+        "Elige un artista para planificar su gira:", opciones_tour
+    )
+
+    datos_artista = df[df["artist_name"] == artista_seleccionado].iloc[0]
+    df_touring = calcular_ruta_touring(
+        artista_seleccionado,
+        int(datos_artista["deezer_fans"]),
+        int(datos_artista["deezer_rank"]),
+    )
+    resumen = resumen_gira(df_touring)
+
+    display_kpi_grid(
+        [
+            ("ROI bruto de la gira", f"${resumen['roi_total_usd']:,}", "💰"),
+            ("Asistentes proyectados", f"{resumen['total_asistentes']:,}", "🎟️"),
+            ("Mercado #1", resumen["mercado_top"], "🥇"),
+            ("Venues viables", f"{resumen['venues_viables']}/8", "🏛️"),
+        ]
+    )
+
+    st.divider()
+
+    # Mapa con tema oscuro premium (CartoDB dark_matter) — coherente con el
+    # design system. st_folium vacío de returned_objects: el mapa es de
+    # solo-lectura y así Streamlit NO re-ejecuta el script en cada drag/zoom.
+    import folium
+    from streamlit_folium import st_folium
+
+    mapa_gira = folium.Map(
+        location=[10.0, -70.0],  # centro visual entre LatAm y España
+        zoom_start=3,
+        tiles=None,
+    )
+    # CartoDB dark_matter (el basemap del tutorial) ya NO acepta acceso
+    # anónimo: los tiles llegan con el sello "API key REQUIRED" estampado.
+    # Esri Dark Gray Canvas: tema oscuro real, gratuito, solo atribución.
+    folium.TileLayer(
+        tiles=(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+        ),
+        attr=(
+            "Tiles &copy; Esri — Source: Esri, HERE, Garmin, FAO, NOAA, "
+            "USGS | Esri Dark Gray Canvas"
+        ),
+        name="Esri Dark Gray",
+        max_zoom=16,
+    ).add_to(mapa_gira)
+    for _, mrow in df_touring.iterrows():
+        popup_html = f"""
+        <div style="font-family: sans-serif; color: #333;">
+            <h4 style="margin:0; color:#0066FF;">{mrow['ciudad']}</h4>
+            <hr style="margin: 5px 0;">
+            <b>Venue:</b> {mrow['venue_recomendado']}<br>
+            <b>Asistentes Est.:</b> {int(mrow['asistentes_estimados']):,}<br>
+            <b>Ticket:</b> ${int(mrow['ticket_price_usd'])} USD<br>
+            <b>ROI Estimado:</b> ${int(mrow['roi_estimado_usd']):,} USD
+        </div>
+        """
+        folium.CircleMarker(
+            location=[mrow["lat"], mrow["lon"]],
+            radius=int(mrow["radio"]),
+            popup=folium.Popup(popup_html, max_width=250),
+            color=mrow["color"],
+            fill=True,
+            fill_color=mrow["color"],
+            fill_opacity=0.6,
+            weight=2,
+        ).add_to(mapa_gira)
+
+    st_folium(mapa_gira, use_container_width=True, height=500, returned_objects=[])
+
+    # Resumen de la gira
+    st.markdown("#### 📊 Resumen de la Gira")
+    st.dataframe(
+        df_touring[
+            [
+                "ciudad",
+                "venue_recomendado",
+                "asistentes_estimados",
+                "ticket_price_usd",
+                "roi_estimado_usd",
+            ]
+        ].rename(
+            columns={
+                "ciudad": "Ciudad",
+                "venue_recomendado": "Venue Recomendado",
+                "asistentes_estimados": "Asistentes Est.",
+                "ticket_price_usd": "Ticket (USD)",
+                "roi_estimado_usd": "ROI Bruto (USD)",
+            }
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.caption(
+        f"Simulación para **{artista_seleccionado}**: {resumen['asistentes_top']:,} "
+        "asistentes en el mercado #1. Conversión fan→ticket 2% "
+        "(−20% fuera del top 400k de rank), reparto proporcional por tamaño de "
+        "mercado, ticket por tier de venue. Modelo determinista: mismo artista "
+        "→ misma gira."
+    )
+    st.divider()
+    st.caption(
+        "Data Product desarrollado por David NED Bustamante | Music Data Analyst "
+        "| Touring: Folium + simulación de mercado"
+    )
+    st.stop()
 
 # ==========================================
 # VISTA 2: FORECASTING — despachada ANTES del contenido de Scouting para que

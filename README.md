@@ -271,10 +271,10 @@ Este proyecto demuestra habilidades de Music Data Analyst y Analytics Engineer:
 - [ ] Integración con Spotify Web API (bloqueada por política 2025: exige Premium del dueño de la app — extractor listo)
 - [ ] Web scraping de datos de TikTok y YouTube
 - [x] Modelo de Machine Learning integrado al dashboard: Random Forest (ROC-AUC 0.9242) serializado con joblib, prediciendo **Probabilidad de Viralidad 6M** por artista en producción
-- [ ] Alertas automáticas cuando un artista entra en "Firmar Ahora"
+- [x] Alertas automáticas cuando un artista entra en "Firmar Ahora" (Telegram, semanales)
 - [x] **Sistema autónomo (Módulo 5)**: robot semanal de datos (GitHub Actions → Deezer API) + forecasting de fans 6M con Prophet integrado al dashboard
 - [x] Blueprint de despliegue en la nube (Render) con app auto-reparable (`bootstrap_db.py` + `render.yaml`)
-- [ ] Módulo de touring: cruce con datos geoespaciales para planificación de giras
+- [x] **Módulo de Touring (Módulo 6)**: mapa geoespacial con simulación de mercado por ciudad (Folium + Esri Dark Gray) — venue recomendado, asistentes y ROI bruto por parada
 
 ## 👤 Sobre el Autor
 
