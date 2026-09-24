@@ -7,6 +7,7 @@ import duckdb
 import joblib
 import os
 import plotly.express as px
+import plotly.graph_objects as go
 from PIL import Image
 import requests
 from io import BytesIO
@@ -868,6 +869,13 @@ if primera_carga:
     load_slot.empty()
     st.session_state.carga_completada = True
 
+# Alcance multi-plataforma estimado (factores documentados en el perfil).
+# Debe existir ANTES de derivar df_filtered: las copias de pandas no
+# heredan columnas añadidas después (causó KeyError en las cards hero).
+df["est_alcance_max"] = (
+    df["deezer_rank"].astype(float) * 2.5 + df["deezer_fans"] * 1.5
+).astype(int)
+
 # Barra de estado SaaS: indicador de salud + tamaño del universo vigilado
 st.markdown(
     f"🟢 **En línea** · **{len(df)}** artistas monitorizados · Fuente: "
@@ -890,12 +898,41 @@ def cargar_forecast():
     return forecast_fans.fit_and_forecast(save_png=False)
 
 
+# ==========================================
+# SIDEBAR — ORDEN OPTIMIZADO (flujo UX: buscar → navegar → refinar)
+# 1. BUSCADOR arriba: la acción #1 del usuario
+# ==========================================
+st.sidebar.header("🔍 Buscar Artista")
+busqueda = st.sidebar.text_input(
+    "Nombre del artista",
+    placeholder="Ej: KAROL G, Feid, Marc Anthony…",
+    label_visibility="collapsed",
+)
+patron = busqueda.strip()
+
+st.sidebar.divider()
+
+# ── 2. VISTAS (navegación principal) ───────────────────────────────────
 st.sidebar.header("🗂️ Vistas")
 vista_tab = st.sidebar.radio(
     "Selecciona la vista:",
     options=["🎯 Scouting", "🔮 Forecasting 6M", "🌍 Touring"],
     label_visibility="collapsed",
 )
+st.sidebar.divider()
+
+# ── Router de vistas (st.session_state: Streamlit no tiene routing nativo).
+# El radio MANDA: si el usuario cambia de vista mientras está en un perfil,
+# el perfil se cierra limpio. Interactuar DENTRO del perfil no lo cierra
+# (el radio no cambió entre re-renders).
+if "vista_actual" not in st.session_state:
+    st.session_state.vista_actual = "scouting"
+if "artista_seleccionado" not in st.session_state:
+    st.session_state.artista_seleccionado = None
+if "radio_previo" in st.session_state and st.session_state.radio_previo != vista_tab:
+    st.session_state.vista_actual = "scouting"
+    st.session_state.artista_seleccionado = None
+st.session_state.radio_previo = vista_tab
 
 # Motores de módulos: scripts/ al path ANTES de importar (el import directo
 # 'from scripts.touring_engine import ...' rompe cuando el CWD de la app no
@@ -906,6 +943,160 @@ _scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
 if _scripts_dir not in sys.path:
     sys.path.insert(0, _scripts_dir)
 from touring_engine import calcular_ruta_touring, resumen_gira
+
+# ==========================================
+# PERFIL DE ARTISTA — Multi-Platform Analytics Hub
+# Routing con st.session_state: las cards del Scouting navegan aquí.
+# ==========================================
+COLORES_PLATAFORMA = {
+    "Spotify": "#1DB954",
+    "YouTube": "#FF0000",
+    "Apple Music": "#FA243C",
+    "TikTok": "#FFFFFF",  # #000000 (marca) desaparecería sobre el tema oscuro
+    "Deezer": "#00CED1",
+}
+
+
+def kpi_plataforma_html(icono, nombre, valor, color, sublabel):
+    """Card glass del hub multi-plataforma. Las 5 cards se componen en UN
+    bloque dentro de .kpi-container (un st.markdown por card rompería la
+    grilla en el DOM de Streamlit)."""
+    return (
+        f'<div class="kpi-card" style="text-align: center;">'
+        f'<div style="font-size: 1.9rem;">{icono}</div>'
+        f'<div class="kpi-label">{nombre}</div>'
+        f'<div style="font-size: 1.45rem; font-weight: 700; color: {color}; '
+        f"font-family: 'JetBrains Mono', monospace; margin: 6px 0;\">{valor}</div>"
+        f'<div style="font-size: 0.72rem; color: #64748b;">{sublabel}</div></div>'
+    )
+
+
+def mostrar_perfil_artista(artist_name):
+    """Perfil exclusivo del artista con hub multi-plataforma.
+
+    La API pública de Deezer solo expone su propio ecosistema (fans, rank,
+    top track). Los números de Spotify/YouTube/Apple/TikTok son ESTIMACIONES
+    con factores de industria 2026 aplicados a las métricas REALES de Deezer;
+    así se declara en la UI para no vender datos sintéticos como reales.
+    """
+    artista_rows = df[df["artist_name"] == artist_name]
+    if artista_rows.empty:
+        # El artista salió del universo (robot semanal, seed nuevo): salir limpio
+        st.session_state.vista_actual = "scouting"
+        st.session_state.artista_seleccionado = None
+        st.warning(f"⚠️ {artist_name} ya no está en el universo monitorizado.")
+        return
+    artista = artista_rows.iloc[0]
+
+    if st.button("← Volver al Scouting", key="btn_volver_perfil"):
+        st.session_state.vista_actual = "scouting"
+        st.session_state.artista_seleccionado = None
+        st.rerun()
+
+    # Header del perfil
+    col_foto, col_datos = st.columns([1, 3])
+    with col_foto:
+        st.image(artista["picture_url"], use_container_width=True)
+    with col_datos:
+        st.title(artista["artist_name"])
+        badge = display_badge_with_pulse(
+            artista["ar_recommendation"],
+            badge_color_for(artista["ar_recommendation"]),
+            inline=True,
+        )
+        st.markdown(
+            f"{badge} · Score: **{artista['scouting_score']:.0f}/100** · "
+            f"Género: **{artista.get('genero', 'N/A')}** · "
+            f"Prob. Viralidad 6M: **{artista['probabilidad_viral']:.1f}%**",
+            unsafe_allow_html=True,  # el badge inline llega como HTML
+        )
+        st.markdown(
+            f"🎧 **{int(artista['deezer_fans']):,}** fans · Rank: "
+            f"**{int(artista['deezer_rank']):,}** · "
+            f"🎵 Top Track: **{artista['top_track_name']}**"
+        )
+        st.markdown(f"[🔗 Ver en Deezer]({artista['deezer_link']})")
+        st.markdown(f"💡 {artista['strategic_insight']}")
+
+    st.divider()
+
+    # ==========================================
+    # MULTI-PLATFORM ANALYTICS HUB (estimaciones declaradas)
+    # ==========================================
+    st.subheader("📊 Analytics Multi-Plataforma")
+    st.caption(
+        "Estimaciones con factores de industria 2026 sobre las métricas REALES "
+        "de Deezer (su API pública no expone a la competencia). En producción: "
+        "conectores de YouTube Data API, TikTok Research API y Apple Music."
+    )
+
+    # Factores declarados (nada de fórmulas ocultas):
+    factor_youtube = float(artista["deezer_rank"]) * 2.5  # alcance audio+video
+    factor_spotify = float(artista["deezer_fans"]) * 1.5  # líder de mercado
+    factor_apple = float(artista["deezer_fans"]) * 0.8    # base menor, engagement alto
+    factor_tiktok = float(artista["deezer_rank"]) * 5     # viralidad exponencial
+
+    kpis_html = "".join(
+        [
+            kpi_plataforma_html("🎵", "SPOTIFY", f"{int(factor_spotify):,}", COLORES_PLATAFORMA["Spotify"], "Monthly Listeners (est.)"),
+            kpi_plataforma_html("📺", "YOUTUBE", f"{int(factor_youtube):,}", COLORES_PLATAFORMA["YouTube"], "Subscribers (est.)"),
+            kpi_plataforma_html("🍎", "APPLE MUSIC", f"{int(factor_apple):,}", COLORES_PLATAFORMA["Apple Music"], "Followers (est.)"),
+            kpi_plataforma_html("🎭", "TIKTOK", f"{int(factor_tiktok):,}", COLORES_PLATAFORMA["TikTok"], "Followers (est.)"),
+            kpi_plataforma_html("🎧", "DEEZER", f"{int(artista['deezer_fans']):,}", COLORES_PLATAFORMA["Deezer"], "Fans (Dato real)"),
+        ]
+    )
+    st.markdown(f'<div class="kpi-container">{kpis_html}</div>', unsafe_allow_html=True)
+
+    st.divider()
+
+    # Gráfico comparativo (log-y: el dato real de Deezer y las estimaciones
+    # viven en órdenes de magnitud distintos)
+    plataformas = list(COLORES_PLATAFORMA.keys())
+    valores = [factor_spotify, factor_youtube, factor_apple, factor_tiktok, float(artista["deezer_fans"])]
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=plataformas,
+                y=valores,
+                marker_color=[COLORES_PLATAFORMA[p] for p in plataformas],
+                text=[f"{int(v):,}" for v in valores],
+                textposition="auto",
+            )
+        ]
+    )
+    fig.update_layout(title="Distribución de Audiencia por Plataforma (escala log)")
+    fig.update_yaxes(type="log")
+    st.plotly_chart(
+        estilo_plotly(fig, alto=420),
+        use_container_width=True,
+        config={"displayModeBar": False},
+        key="chart_perfil_plataformas",
+    )
+
+    # Insights estratégicos
+    st.subheader("💡 Insights Estratégicos")
+    plataforma_dominante = plataformas[valores.index(max(valores))]
+    ratio_youtube_deezer = factor_youtube / max(float(artista["deezer_fans"]), 1)
+    st.markdown(
+        f"""
+        <div class="glass-card">
+            <h4>🎯 Análisis de Presencia Digital</h4>
+            <ul>
+                <li><strong>Plataforma dominante:</strong> {plataforma_dominante} concentra el mayor alcance estimado del artista.</li>
+                <li><strong>Ratio YouTube/Deezer:</strong> {ratio_youtube_deezer:.1f}x — por encima de 3x indica fuerte presencia visual/video.</li>
+                <li><strong>Recomendación:</strong> {'Enfocar estrategia en video content (YouTube/TikTok)' if ratio_youtube_deezer > 3 else 'Fortalecer presencia en streaming de audio (Spotify/Apple Music)'}.</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# ROUTER: el perfil se despacha ANTES que las vistas (es un estado
+# transitorio encima de la navegación; cambiar el radio lo cierra)
+if st.session_state.vista_actual == "perfil" and st.session_state.artista_seleccionado:
+    mostrar_perfil_artista(st.session_state.artista_seleccionado)
+    st.stop()
 
 # ==========================================
 # VISTA 3: TOURING — página independiente (mismo despacho que Forecasting)
@@ -1108,17 +1299,8 @@ if vista_tab == "🔮 Forecasting 6M":
 # VISTA 1: SCOUTING
 # ==========================================
 
-# ── BUSCADOR DE ARTISTAS (Fase 2) ────────────────────────────────────────
-# Búsqueda en tiempo real por nombre: substring, case-insensitive y sin
-# regex (el usuario escribe texto libre, p. ej. "C+" no debe explotar).
-st.sidebar.header("🔍 Buscar Artista")
-busqueda = st.sidebar.text_input(
-    "Nombre del artista",
-    placeholder="Ej: KAROL G, Feid, Marc Anthony…",
-    label_visibility="collapsed",
-)
-
-patron = busqueda.strip()
+# ── 3. FILTROS (el widget del buscador se define arriba del sidebar;
+# aquí solo vive su lógica: búsqueda = comodín, filtros = refinamiento) ──
 if patron:
     df_busqueda = df[
         df["artist_name"].str.contains(patron, case=False, na=False, regex=False)
@@ -1182,6 +1364,17 @@ display_kpi_grid(
 
 st.divider()
 
+# Placeholder en línea (via.placeholder.com murió en 2024): definido ANTES
+# de la función que lo usa (cargar_foto_uri también lo usa la card compacta
+# de paginación vía onerror inline)
+_SVG_PLACEHOLDER = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">'
+    '<rect width="100" height="100" fill="#1f2a3d"/>'
+    '<text x="50" y="55" font-size="30" text-anchor="middle">🎼</text></svg>'
+)
+_SVG_PLACEHOLDER_B64 = base64.b64encode(_SVG_PLACEHOLDER.encode()).decode()
+
+
 # Cache de fotos: un solo request por URL aunque Streamlit re-renderice.
 # Devuelve data URI para embeber la imagen en el HTML de las cards
 # glassmórficas (y fallback local si la CDN falla).
@@ -1196,26 +1389,25 @@ def cargar_foto_uri(url):
         img.save(buf, format="JPEG", quality=85)
         return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
     except Exception:
-        # Placeholder en línea (via.placeholder.com murió en 2024)
-        return (
-            "data:image/svg+xml;base64," + _SVG_PLACEHOLDER_B64
-        )
+        return "data:image/svg+xml;base64," + _SVG_PLACEHOLDER_B64
 
 
-_SVG_PLACEHOLDER = (
-    '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">'
-    '<rect width="100" height="100" fill="#1f2a3d"/>'
-    '<text x="50" y="55" font-size="30" text-anchor="middle">🎼</text></svg>'
-)
-_SVG_PLACEHOLDER_B64 = base64.b64encode(_SVG_PLACEHOLDER.encode()).decode()
-
-
-# Top Artists con Fotos
+# Top Artists con Fotos — cada card es CLICKEABLE: navega al perfil
+# multi-plataforma del artista (router st.session_state). El botón va
+# ENCIMA de la card: dentro del HTML no se puede incrustar un st.button.
 st.subheader("🏆 Top 10 Artistas Prioritarios")
 
 top_10 = df_filtered.head(10)
 
 for pos, (_, row) in enumerate(top_10.iterrows()):
+    if st.button(
+        f"👤 Ver perfil de {row['artist_name']} · alcance est. {int(row['est_alcance_max']):,}",
+        key=f"perfil_hero_{row['artist_name']}",
+        use_container_width=True,
+    ):
+        st.session_state.artista_seleccionado = row["artist_name"]
+        st.session_state.vista_actual = "perfil"
+        st.rerun()
     # Foto cacheada convertida a data URI: un solo request por URL, y el HTML
     # no depende de que la CDN responda (fallback a imagen placeholder)
     try:
@@ -1369,6 +1561,15 @@ st.caption(
 cols_grid = st.columns(2)
 for idx, (_, artista) in enumerate(pagina_df.iterrows()):
     with cols_grid[idx % 2]:
+        # También las cards compactas de la paginación abren el perfil
+        if st.button(
+            f"👤 {artista['artist_name']} · score {artista['scouting_score']:.0f}",
+            key=f"perfil_grid_{artista['artist_name']}",
+            use_container_width=True,
+        ):
+            st.session_state.artista_seleccionado = artista["artist_name"]
+            st.session_state.vista_actual = "perfil"
+            st.rerun()
         st.markdown(
             artist_card_compacto_html(artista, index=idx),
             unsafe_allow_html=True,

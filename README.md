@@ -278,6 +278,7 @@ Este proyecto demuestra habilidades de Music Data Analyst y Analytics Engineer:
 - [x] **Universo de scouting expandido (Fase 1)**: extractor por géneros (`scripts/expand_database.py`) que lleva el seed de 10 a 150+ artistas reales de Deezer con top-1 track por artista, merge seguro con la watchlist y columna `genero`
 - [x] **Buscador de artistas en tiempo real (Fase 2)**: búsqueda por nombre (case-insensitive) en el sidebar que recorta KPIs, top 10, analytics y tabla al instante
 - [x] **Tema Cyberpunk Enterprise + Analytics (Fases 3-5)**: glassmorphism, KPIs estilo Bloomberg, paginación de 20 artistas por página y 5 gráficas Plotly con tema oscuro integrado (histograma de scores, donut de recomendaciones, top-N, scatter log fans vs score, fans por género)
+- [x] **Perfil de artista multi-plataforma**: cards clickeables (Top 10 y paginación) que abren una ficha exclusiva con router `st.session_state` — hub de 5 plataformas (Spotify/YouTube/Apple/TikTok/Deezer con factores de industria declarados), gráfico comparativo log y insights estratégicos; sidebar reordenado Buscar → Vistas → Filtros
 
 ## 👤 Sobre el Autor
 
