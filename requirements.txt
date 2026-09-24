@@ -17,6 +17,10 @@ python-dotenv>=1.0.0
 scikit-learn>=1.4.0
 joblib>=1.3.0
 
+# Analytics del universo scouting (Fase 5): histograma, donut, top-N,
+# scatter score vs fans, fans por género — tema oscuro integrado
+plotly>=5.22.0
+
 # Forecasting de series de tiempo (Módulo 5): Prophet; el módulo hace
 # fallback transparente a sklearn si el entorno no puede instalarlo
 prophet>=1.1

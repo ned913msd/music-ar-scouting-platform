@@ -15,6 +15,7 @@ cleaned_data AS (
     SELECT 
         artist_name,
         artist_id,
+        genero,
         deezer_fans,
         deezer_rank,
         picture_url,
@@ -60,6 +61,7 @@ final_ranking AS (
     SELECT 
         artist_name,
         artist_id,
+        genero,
         picture_url,
         deezer_link,
         deezer_fans,

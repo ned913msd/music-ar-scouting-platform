@@ -71,7 +71,7 @@ def _scored_table_sql(csv_path):
             FROM cleaned
         )
         SELECT
-            artist_name, artist_id, picture_url, deezer_link,
+            artist_name, artist_id, genero, picture_url, deezer_link,
             deezer_fans, deezer_rank, top_track_name, top_track_rank,
             top_track_duration, fan_rank_ratio,
             ROUND(

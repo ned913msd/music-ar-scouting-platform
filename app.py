@@ -1,10 +1,12 @@
 import base64
+import math
 
 import streamlit as st
 import pandas as pd
 import duckdb
 import joblib
 import os
+import plotly.express as px
 from PIL import Image
 import requests
 from io import BytesIO
@@ -18,21 +20,29 @@ st.set_page_config(
 
 
 def load_custom_css():
-    """Design System Neumorphism (Fases 1 y 3): tema claro premium con
-    sombras suaves dobles, hover states y animaciones de entrada.
+    """CYBERPUNK ENTERPRISE THEME: plataforma SaaS oscura tipo Bloomberg
+    Terminal / Spotify for Artists. Glassmorphism (cristal esmerilado) en
+    cards y KPIs, acentos neón azul→púrpura→cian, tipografía Inter +
+    JetBrains Mono para cifras, scrollbar neón y micro-interacciones
+    (ripple, page transition, stagger con overshoot).
     Selectores estables (data-testid) en vez de hashes .css-*, que cambian
     entre versiones de Streamlit."""
     custom_css = """
     <style>
     /* ==========================================
-       NEUMORPHISM DESIGN SYSTEM
+       CYBERPUNK ENTERPRISE THEME
        ========================================== */
 
-    /* Fondo principal con gradiente animado */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+
+    /* Fondo con gradiente animado (oscuro por defecto: look SaaS) */
     .stApp {
-        background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
-        background-size: 200% 200%;
-        animation: gradientShift 15s ease infinite;
+        background: linear-gradient(135deg, #0a0e27 0%, #161c42 50%, #0f1535 100%);
+        background-size: 400% 400%;
+        color: #e2e8f0;
+        animation:
+            pageTransition 0.8s cubic-bezier(0.4, 0, 0.2, 1),
+            gradientShift 15s ease infinite;
     }
 
     @keyframes gradientShift {
@@ -41,39 +51,67 @@ def load_custom_css():
         100% { background-position: 0% 50%; }
     }
 
-    /* Cards con efecto Neumorphism */
+    @keyframes pageTransition {
+        0% {
+            opacity: 0;
+            transform: scale(0.98) translateY(10px);
+            filter: blur(4px);
+        }
+        100% {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            filter: blur(0);
+        }
+    }
+
+    header[data-testid="stHeader"] { background: transparent; }
+
+    /* ==========================================
+       GLASSMORPHISM CARDS
+       ========================================== */
+    .glass-card,
     .neumorphic-card {
-        background: #f0f2f6;
-        border-radius: 20px;
-        padding: 25px;
-        box-shadow:
-            8px 8px 16px #d1d5db,
-            -8px -8px 16px #ffffff;
-        margin-bottom: 20px;
-        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 22px;
+        margin-bottom: 18px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+        transition: all 0.3s ease;
         animation: fadeInUp 0.6s ease-out;
     }
 
+    .glass-card:hover,
     .neumorphic-card:hover {
-        box-shadow:
-            12px 12px 24px #d1d5db,
-            -12px -12px 24px #ffffff;
-        transform: translateY(-4px) scale(1.01);
+        border-color: rgba(0, 102, 255, 0.5);
+        box-shadow: 0 10px 34px rgba(0, 102, 255, 0.15);
+        transform: translateY(-3px);
     }
 
     @keyframes fadeInUp {
-        from {
-            opacity: 0;
-            transform: translateY(30px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
+        from { opacity: 0; transform: translateY(24px); }
+        to { opacity: 1; transform: translateY(0); }
     }
 
-    /* KPIs con estilo premium (grid en un solo bloque DOM: los div de
-       Streamlit no permiten abrir un contenedor en varios st.markdown) */
+    /* STAGGER: entrada con rebote (overshoot) para las cards de artista.
+       El delay real se aplica INLINE por card (cada card es hija única de
+       su wrapper en el DOM: nth-child no staggeriza entre st.markdown) */
+    .neumorphic-card.artist-card {
+        opacity: 0;
+        transform: translateY(40px);
+        animation: staggerSlideIn 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+
+    @keyframes staggerSlideIn {
+        0% { opacity: 0; transform: translateY(40px) scale(0.95); }
+        100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* ==========================================
+       KPIs ESTILO BLOOMBERG TERMINAL
+       ========================================== */
     .kpi-container {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -82,15 +120,34 @@ def load_custom_css():
     }
 
     .kpi-card {
-        background: linear-gradient(145deg, #ffffff, #f0f2f6);
-        border-radius: 16px;
+        background: linear-gradient(145deg, rgba(0, 102, 255, 0.10), rgba(138, 43, 226, 0.10));
+        border: 1px solid rgba(0, 102, 255, 0.25);
+        border-radius: 14px;
         padding: 20px;
-        box-shadow:
-            5px 5px 10px #d1d5db,
-            -5px -5px 10px #ffffff;
         text-align: center;
-        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        transition: all 0.3s ease;
         animation: fadeInUp 0.6s ease-out both;
+    }
+
+    /* Barra superior degradada con barrido (shimmer) */
+    .kpi-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, #0066FF, #8A2BE2, #00CED1);
+        animation: shimmer 3s infinite;
+    }
+
+    @keyframes shimmer {
+        0% { background-position: -1000px 0; }
+        100% { background-position: 1000px 0; }
     }
 
     /* Entrada escalonada de los KPIs */
@@ -100,37 +157,39 @@ def load_custom_css():
     .kpi-card:nth-child(4) { animation-delay: 0.4s; }
 
     .kpi-card:hover {
-        transform: translateY(-5px) scale(1.05);
-        box-shadow:
-            10px 10px 20px #d1d5db,
-            -10px -10px 20px #ffffff;
+        transform: translateY(-4px);
+        border-color: rgba(0, 102, 255, 0.6);
+        box-shadow: 0 10px 30px rgba(0, 102, 255, 0.2);
     }
 
     .kpi-value {
-        font-size: 2.5rem;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 2.4rem;
         font-weight: 700;
-        color: #0066FF;
         margin: 10px 0;
-        text-shadow: 0 0 15px rgba(0, 102, 255, 0.3);
+        background: linear-gradient(135deg, #4d94ff, #00CED1);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
         animation: countUp 1s ease-out;
     }
 
-    /* Valores largos ($3,190,540 / nombres de ciudad): a 2.5rem se parten en
-       dos líneas dentro de la card — tamaño compacto que sí cabe */
+    /* Valores largos ($3,190,540 / nombres de ciudad): tamaño compacto */
     .kpi-value.kpi-value-sm {
         font-size: 1.7rem;
     }
 
     .kpi-label {
-        font-size: 0.9rem;
-        color: #6b7280;
+        font-size: 0.85rem;
+        color: #94a3b8;
         text-transform: uppercase;
         letter-spacing: 1px;
+        font-weight: 600;
         transition: color 0.3s ease;
     }
 
     .kpi-card:hover .kpi-label {
-        color: #0066FF;
+        color: #4d94ff;
     }
 
     @keyframes countUp {
@@ -138,189 +197,185 @@ def load_custom_css():
         to { opacity: 1; transform: scale(1); }
     }
 
-    /* Botones con efecto premium + brillo deslizante */
-    .stButton > button {
-        background: linear-gradient(145deg, #0066FF, #0052CC);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        padding: 12px 24px;
-        font-weight: 600;
-        box-shadow:
-            4px 4px 8px #d1d5db,
-            -4px -4px 8px #ffffff;
-        transition: all 0.3s ease;
-        position: relative;
-        overflow: hidden;
+    /* ==========================================
+       SIDEBAR PROFESIONAL
+       ========================================== */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, rgba(10, 14, 39, 0.97) 0%, rgba(13, 18, 40, 0.99) 100%);
+        border-right: 1px solid rgba(0, 102, 255, 0.18);
+        box-shadow: 4px 0 20px rgba(0, 0, 0, 0.45);
     }
 
-    .stButton > button::before {
+    /* Titulares con glow neón */
+    h1, h2, h3 {
+        color: #e2e8f0;
+        font-weight: 700;
+        text-shadow: 0 0 24px rgba(0, 102, 255, 0.35);
+        transition: all 0.3s ease;
+    }
+    h4 { color: #e2e8f0; }
+    p, li, span { color: #cbd5e1; }
+    hr { border-color: rgba(255, 255, 255, 0.08); }
+
+    /* Métricas nativas: glass + hover */
+    [data-testid="stMetric"] {
+        background: linear-gradient(145deg, rgba(0, 102, 255, 0.08), rgba(138, 43, 226, 0.08));
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        padding: 15px;
+        transition: all 0.3s ease;
+    }
+
+    [data-testid="stMetric"]:hover {
+        transform: scale(1.03);
+        border-color: rgba(0, 102, 255, 0.4);
+    }
+
+    /* Inputs estilo cyberpunk */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div > select {
+        background: rgba(255, 255, 255, 0.05);
+        color: #e2e8f0;
+        border: 1px solid rgba(0, 102, 255, 0.3);
+        border-radius: 10px;
+        padding: 12px;
+        transition: all 0.3s ease;
+    }
+
+    .stTextInput > div > div > input:focus,
+    .stSelectbox > div > div > select:focus {
+        border-color: #0066FF;
+        animation: focusPulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes focusPulse {
+        0%, 100% { box-shadow: 0 0 10px rgba(0, 102, 255, 0.3); }
+        50% { box-shadow: 0 0 18px rgba(0, 102, 255, 0.45); }
+    }
+
+    ::placeholder { color: #64748b; }
+
+    /* ==========================================
+       BOTONES CON GLOW + RIPPLE
+       ========================================== */
+    .stButton > button,
+    [data-testid="stBaseButton-secondary"] {
+        position: relative;
+        overflow: hidden;
+        transform: translateZ(0); /* acelera el render en GPU */
+        background: linear-gradient(145deg, #0066FF, #8A2BE2);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 12px 24px;
+        font-weight: 600;
+        box-shadow: 0 4px 15px rgba(0, 102, 255, 0.4);
+        transition: all 0.3s ease;
+    }
+
+    /* Brillo deslizante (shimmer) */
+    .stButton > button::before,
+    [data-testid="stBaseButton-secondary"]::before {
         content: '';
         position: absolute;
         top: 0;
         left: -100%;
         width: 100%;
         height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
         transition: left 0.6s ease;
     }
 
-    .stButton > button:hover::before {
+    .stButton > button:hover::before,
+    [data-testid="stBaseButton-secondary"]:hover::before {
         left: 100%;
     }
 
-    .stButton > button:hover {
-        transform: translateY(-3px);
-        box-shadow:
-            8px 8px 16px #d1d5db,
-            -8px -8px 16px #ffffff,
-            0 0 20px rgba(0, 102, 255, 0.4);
+    .stButton > button:hover,
+    [data-testid="stBaseButton-secondary"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 102, 255, 0.6);
     }
 
-    .stButton > button:active {
+    .stButton > button:active,
+    [data-testid="stBaseButton-secondary"]:active {
         transform: translateY(0);
-        box-shadow:
-            inset 2px 2px 4px #004099,
-            inset -2px -2px 4px #0080FF;
     }
 
-    /* Inputs con estilo neumórfico (inset) */
-    .stTextInput > div > div > input,
-    .stSelectbox > div > div > select {
-        background: #f0f2f6;
-        border-radius: 12px;
-        padding: 12px;
-        box-shadow:
-            inset 2px 2px 4px #d1d5db,
-            inset -2px -2px 4px #ffffff;
-        border: 2px solid transparent;
-        transition: all 0.3s ease;
+    /* Ripple: onda al hacer clic */
+    .stButton > button::after,
+    [data-testid="stBaseButton-secondary"]::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        background: rgba(255, 255, 255, 0.4);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        transition: width 0.6s ease-out, height 0.6s ease-out, opacity 0.6s ease-out;
+        opacity: 0;
+        pointer-events: none; /* no interfiere con el clic */
     }
 
-    .stTextInput > div > div > input:focus,
-    .stSelectbox > div > div > select:focus {
-        box-shadow:
-            inset 3px 3px 6px #d1d5db,
-            inset -3px -3px 6px #ffffff;
-        border-color: #0066FF;
-        animation: focusPulse 1.5s ease-in-out infinite;
+    .stButton > button:active::after,
+    [data-testid="stBaseButton-secondary"]:active::after {
+        width: 400px;
+        height: 400px;
+        opacity: 1;
+        transition: 0s;
     }
 
-    @keyframes focusPulse {
-        0%, 100% { box-shadow: inset 3px 3px 6px #d1d5db, inset -3px -3px 6px #ffffff, 0 0 0 0 rgba(0, 102, 255, 0.4); }
-        50% { box-shadow: inset 3px 3px 6px #d1d5db, inset -3px -3px 6px #ffffff, 0 0 0 4px rgba(0, 102, 255, 0.2); }
-    }
-
-    /* Sidebar con gradiente y sombra (selector estable entre versiones) */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #f5f7fa 0%, #e8ecf1 100%);
-        box-shadow: 4px 0 15px rgba(0,0,0,0.08);
-        transition: all 0.3s ease;
-    }
-
-    /* Títulos con brillo sutil que se intensifica al hover */
-    h1, h2, h3 {
-        color: #1f2937;
-        font-weight: 700;
-        text-shadow: 0 0 20px rgba(0, 102, 255, 0.15);
-        transition: all 0.3s ease;
-    }
-
-    h1:hover, h2:hover, h3:hover {
-        text-shadow: 0 0 30px rgba(0, 102, 255, 0.3);
-    }
-
-    /* Métricas nativas con card suave y hover */
-    [data-testid="stMetric"] {
-        background: linear-gradient(145deg, #ffffff, #f0f2f6);
-        border-radius: 12px;
-        padding: 15px;
-        box-shadow:
-            4px 4px 8px #d1d5db,
-            -4px -4px 8px #ffffff;
-        transition: all 0.3s ease;
-    }
-
-    [data-testid="stMetric"]:hover {
-        transform: scale(1.05);
-        box-shadow:
-            6px 6px 12px #d1d5db,
-            -6px -6px 12px #ffffff;
-    }
-
-    /* Animaciones (Fase 3) */
-    @keyframes slideIn {
-        from {
-            opacity: 0;
-            transform: translateY(20px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-
-    @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.7; }
-    }
-
-    .loading {
-        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-
-    /* Imágenes de artista: esquinas suaves y sombra neumórfica */
-    .artist-photo {
-        width: 100%;
-        height: auto;
-        border-radius: 16px;
-        box-shadow:
-            4px 4px 8px #d1d5db,
-            -4px -4px 8px #ffffff;
-    }
-
-    /* Internos de la card de artista como CLASES (no estilos inline):
-       así el modo oscuro puede sobreescribirlos sin pelear con inline */
-    .artist-name { margin: 0; color: #1f2937; }
-    .artist-meta { margin: 5px 0; color: #6b7280; font-size: 0.9rem; }
-    .score-value { color: #0066FF; }
-    .artist-track { margin: 5px 0; color: #4b5563; font-size: 0.85rem; }
+    /* ==========================================
+       INTERNOS DE LA CARD DE ARTISTA (oscuros)
+       ========================================== */
+    .artist-name { margin: 0; color: #f1f5f9; }
+    .artist-meta { margin: 5px 0; color: #94a3b8; font-size: 0.9rem; }
+    .score-value { color: #4d94ff; }
+    .artist-track { margin: 5px 0; color: #cbd5e1; font-size: 0.85rem; }
     .insight-pill {
-        background: #e0f2fe;
+        background: rgba(0, 102, 255, 0.12);
         padding: 8px 12px;
         border-radius: 8px;
         margin-top: 10px;
     }
-    .insight-pill span { color: #0369a1; font-size: 0.85rem; }
+    .insight-pill span { color: #93c5fd; font-size: 0.85rem; }
     .stat-block { margin-bottom: 10px; }
     .stat-label {
         font-size: 0.75rem;
-        color: #6b7280;
+        color: #94a3b8;
         text-transform: uppercase;
     }
-    .stat-value-blue { font-size: 1.5rem; font-weight: 700; color: #0066FF; }
-    .stat-value-dark { font-size: 1.5rem; font-weight: 700; color: #1f2937; }
+    .stat-value-blue { font-size: 1.5rem; font-weight: 700; color: #4d94ff; }
+    .stat-value-dark { font-size: 1.5rem; font-weight: 700; color: #f1f5f9; }
     .viral-track {
-        background: #e5e7eb;
+        background: #1f2a3d;
         border-radius: 6px;
         height: 8px;
         margin-top: 4px;
         overflow: hidden;
     }
     .viral-fill {
-        background: linear-gradient(90deg, #0066FF, #4d94ff);
+        background: linear-gradient(90deg, #0066FF, #00CED1);
         height: 100%;
         animation: progressFill 1.5s ease-out;
     }
     .deezer-link {
-        color: #0066FF;
+        color: #4d94ff;
         text-decoration: none;
         font-weight: 600;
     }
+    .artist-photo {
+        width: 100%;
+        height: auto;
+        border-radius: 16px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+    }
 
-    /* ================= COMPONENTES PREMIUM ================= */
-
-    /* Spinner de carga */
+    /* ==========================================
+       COMPONENTES PREMIUM
+       ========================================== */
     .loading-spinner {
         display: flex;
         justify-content: center;
@@ -331,8 +386,8 @@ def load_custom_css():
     .spinner {
         width: 50px;
         height: 50px;
-        border: 4px solid #f0f2f6;
-        border-top: 4px solid #0066FF;
+        border: 4px solid #1f2a3d;
+        border-top: 4px solid #4d94ff;
         border-radius: 50%;
         animation: spin 1s linear infinite;
         box-shadow:
@@ -345,12 +400,18 @@ def load_custom_css():
         100% { transform: rotate(360deg); }
     }
 
+    .loading-spinner p { color: #94a3b8 !important; }
+
     /* Skeleton loader (efecto tipo Facebook/LinkedIn) */
-    .skeleton {
-        background: linear-gradient(90deg, #f0f2f6 25%, #e8ecf1 50%, #f0f2f6 75%);
+    .skeleton,
+    .skeleton-circle {
+        background: linear-gradient(90deg, #161d33 25%, #1f2a3d 50%, #161d33 75%);
         background-size: 200% 100%;
-        animation: shimmer 1.5s infinite;
+        animation: shimmerSkel 1.5s infinite;
         border-radius: 8px;
+    }
+
+    .skeleton {
         height: 20px;
         margin: 10px 0;
     }
@@ -359,29 +420,26 @@ def load_custom_css():
         width: 100px;
         height: 100px;
         border-radius: 50%;
-        background: linear-gradient(90deg, #f0f2f6 25%, #e8ecf1 50%, #f0f2f6 75%);
-        background-size: 200% 100%;
-        animation: shimmer 1.5s infinite;
     }
 
-    @keyframes shimmer {
+    @keyframes shimmerSkel {
         0% { background-position: 200% 0; }
         100% { background-position: -200% 0; }
     }
 
     /* Barra de progreso animada */
     .progress-bar-container {
-        background: #f0f2f6;
+        background: #111827;
         border-radius: 10px;
         padding: 4px;
         box-shadow:
-            inset 2px 2px 4px #d1d5db,
-            inset -2px -2px 4px #ffffff;
+            inset 2px 2px 4px rgba(0, 0, 0, 0.5),
+            inset -2px -2px 4px rgba(31, 42, 61, 0.8);
         margin: 10px 0;
     }
 
     .progress-bar {
-        background: linear-gradient(90deg, #0066FF, #0080FF);
+        background: linear-gradient(90deg, #0066FF, #00CED1);
         height: 8px;
         border-radius: 8px;
         animation: progressFill 1.5s ease-out;
@@ -432,9 +490,9 @@ def load_custom_css():
         height: 200%;
         background: linear-gradient(
             to bottom right,
-            rgba(255,255,255,0) 0%,
-            rgba(255,255,255,0.1) 50%,
-            rgba(255,255,255,0) 100%
+            rgba(255, 255, 255, 0) 0%,
+            rgba(255, 255, 255, 0.1) 50%,
+            rgba(255, 255, 255, 0) 100%
         );
         transform: rotate(45deg);
         animation: shine 3s infinite;
@@ -446,103 +504,44 @@ def load_custom_css():
         100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
     }
 
-    /* Scrollbar personalizada */
+    /* ==========================================
+       SCROLLBAR NEÓN
+       ========================================== */
     ::-webkit-scrollbar {
-        width: 10px;
+        width: 8px;
+        height: 8px;
     }
 
     ::-webkit-scrollbar-track {
-        background: #f0f2f6;
-        border-radius: 10px;
+        background: rgba(10, 14, 39, 0.6);
+        border-radius: 4px;
     }
 
     ::-webkit-scrollbar-thumb {
-        background: linear-gradient(180deg, #0066FF, #0052CC);
-        border-radius: 10px;
+        background: linear-gradient(180deg, #0066FF, #8A2BE2);
+        border-radius: 4px;
     }
 
     ::-webkit-scrollbar-thumb:hover {
-        background: linear-gradient(180deg, #0080FF, #0066FF);
+        background: linear-gradient(180deg, #00CED1, #0066FF);
     }
 
-    /* ==========================================
-       MICRO-INTERACCIONES AVANZADAS
-       ========================================== */
-
-    /* 1. EFECTO RIPPLE EN BOTONES (onda al hacer clic) */
-    .stButton > button {
-        position: relative;
-        overflow: hidden;
-        transform: translateZ(0); /* acelera el render en GPU */
+    /* Widgets nativos: el contenedor de chips del multiselect toma el
+       secondaryBackgroundColor del tema global mediante clases emotion
+       (hashes inestables entre versiones). Transparencia estructural. */
+    [data-testid="stSidebar"] [data-testid="stMultiSelect"] div {
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stMultiSelect"] input {
+        color: #e2e8f0 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stSlider"] {
+        color: #94a3b8;
     }
 
-    .stButton > button::after {
-        content: "";
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 0;
-        height: 0;
-        background: rgba(255, 255, 255, 0.4);
-        border-radius: 50%;
-        transform: translate(-50%, -50%);
-        transition: width 0.6s ease-out, height 0.6s ease-out, opacity 0.6s ease-out;
-        opacity: 0;
-        pointer-events: none; /* no interfiere con el clic */
-    }
-
-    .stButton > button:active::after {
-        width: 400px;
-        height: 400px;
-        opacity: 1;
-        transition: 0s; /* aparece instantáneo al presionar */
-    }
-
-    /* 2. TRANSICIÓN DE PÁGINA (fade & scale al cargar).
-       Combinada con gradientShift en UNA declaración: dos reglas .stApp
-       con animation distinta se pisan entre sí (la última gana) y matarían
-       el gradiente animado. */
-    .stApp {
-        animation:
-            pageTransition 0.8s cubic-bezier(0.4, 0, 0.2, 1),
-            gradientShift 15s ease infinite;
-    }
-
-    @keyframes pageTransition {
-        0% {
-            opacity: 0;
-            transform: scale(0.98) translateY(10px);
-            filter: blur(4px);
-        }
-        100% {
-            opacity: 1;
-            transform: scale(1) translateY(0);
-            filter: blur(0);
-        }
-    }
-
-    /* 3. STAGGER EFFECT: entrada con rebote (overshoot) para las cards de
-       artista. El delay real se aplica INLINE por card (Streamlit no
-       conserva contenedores entre st.markdown, así que nth-child no
-       staggeriza: cada card es hija única de su wrapper) */
-    .neumorphic-card.artist-card {
-        opacity: 0;
-        transform: translateY(40px);
-        animation: staggerSlideIn 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-    }
-
-    @keyframes staggerSlideIn {
-        0% {
-            opacity: 0;
-            transform: translateY(40px) scale(0.95);
-        }
-        100% {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-        }
-    }
-
-    /* 4. Accesibilidad: sin movimiento para quien lo pide al sistema.
+    /* Accesibilidad: sin movimiento para quien lo pide al sistema.
        Sin esto, las cards quedarían en opacity:0 (estado base del stagger)
        con las animaciones desactivadas. */
     @media (prefers-reduced-motion: reduce) {
@@ -556,82 +555,13 @@ def load_custom_css():
             transform: none !important;
         }
     }
-
-    /* 5. Compatibilidad Streamlit ≥1.64: los botones ya no usan .stButton
-       (ahora [data-testid="stBaseButton-*"]); replicamos el estilo premium
-       completo (gradiente + shimmer + ripple) en el selector actual */
-    [data-testid="stBaseButton-secondary"] {
-        position: relative;
-        overflow: hidden;
-        transform: translateZ(0);
-        background: linear-gradient(145deg, #0066FF, #0052CC);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        padding: 12px 24px;
-        font-weight: 600;
-        box-shadow:
-            4px 4px 8px #d1d5db,
-            -4px -4px 8px #ffffff;
-        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    [data-testid="stBaseButton-secondary"]::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-        transition: left 0.6s ease;
-    }
-
-    [data-testid="stBaseButton-secondary"]:hover::before { left: 100%; }
-
-    [data-testid="stBaseButton-secondary"]:hover {
-        transform: translateY(-3px);
-        box-shadow:
-            8px 8px 16px #d1d5db,
-            -8px -8px 16px #ffffff,
-            0 0 20px rgba(0, 102, 255, 0.4);
-    }
-
-    [data-testid="stBaseButton-secondary"]:active {
-        transform: translateY(0);
-        box-shadow:
-            inset 3px 3px 6px #004099,
-            inset -3px -3px 6px #0080FF;
-    }
-
-    [data-testid="stBaseButton-secondary"]::after {
-        content: "";
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 0;
-        height: 0;
-        background: rgba(255, 255, 255, 0.4);
-        border-radius: 50%;
-        transform: translate(-50%, -50%);
-        transition: width 0.6s ease-out, height 0.6s ease-out, opacity 0.6s ease-out;
-        opacity: 0;
-        pointer-events: none;
-    }
-
-    [data-testid="stBaseButton-secondary"]:active::after {
-        width: 400px;
-        height: 400px;
-        opacity: 1;
-        transition: 0s;
-    }
     </style>
     """
     st.markdown(custom_css, unsafe_allow_html=True)
 
 
 def display_kpi_grid(kpis):
-    """Fase 2: KPIs neumórficos. Compone las cards en UN solo bloque HTML
+    """KPIs estilo Bloomberg. Compone las cards en UN solo bloque HTML
     (varios st.markdown romperían el <div class="kpi-container">: Streamlit
     envuelve cada st.markdown en su propio div del DOM)."""
     cards = "".join(
@@ -645,7 +575,7 @@ def display_kpi_grid(kpis):
 
 
 def artist_card_html(row, photo_data_uri=None, index=0):
-    """Fase 2: card de artista neumórfica. Conserva las features del tablero
+    """Card de artista glassmórfica (hero). Conserva las features del tablero
     anterior que el HTML plano del tutorial descartaba: Probabilidad de
     Viralidad (ML) con barra, y fallback de foto si la CDN falla."""
     fans = f"{int(row['deezer_fans']):,}"
@@ -697,6 +627,36 @@ def artist_card_html(row, photo_data_uri=None, index=0):
     """
 
 
+def artist_card_compacto_html(row, index=0):
+    """Card compacta para la paginación (grid 2 columnas): foto, nombre,
+    score, fans y badge de recomendación. La foto va por URL directa de la
+    CDN de Deezer (el navegador la descarga: cero requests en el backend) con
+    fallback inline si la CDN falla."""
+    fans = f"{int(row['deezer_fans']):,}"
+    badge = display_badge_with_pulse(
+        row["ar_recommendation"],
+        badge_color_for(row["ar_recommendation"]),
+        inline=True,
+    )
+    return f"""
+    <div class="neumorphic-card artist-card" style="animation-delay: {index * 0.05:.2f}s; padding: 15px; margin-bottom: 15px;">
+        <div style="display: flex; gap: 14px; align-items: center;">
+            <img src="{row['picture_url']}"
+                 onerror="this.src='data:image/svg+xml;base64,{_SVG_PLACEHOLDER_B64}'"
+                 style="width: 56px; height: 56px; border-radius: 12px; object-fit: cover; flex-shrink: 0;"
+                 alt="{row['artist_name']}">
+            <div style="flex: 1; min-width: 0;">
+                <h4 class="artist-name" style="font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{row['artist_name']}</h4>
+                <p class="artist-meta" style="margin: 4px 0 0;">
+                    Score: <strong class="score-value">{row['scouting_score']:.0f}/100</strong> · 🎧 {fans} fans
+                </p>
+                <div style="margin-top: 6px;">{badge}</div>
+            </div>
+        </div>
+    </div>
+    """
+
+
 def show_loading_spinner(message, slot=None):
     """Spinner premium. Pásale un st.empty() como slot: al escribir encima
     el spinner desaparece (el flujo normal de Streamlit NO borra los
@@ -707,7 +667,7 @@ def show_loading_spinner(message, slot=None):
         <div class="loading-spinner">
             <div>
                 <div class="spinner"></div>
-                <p style="text-align: center; color: #6b7280; margin-top: 15px; font-weight: 500;">
+                <p style="text-align: center; margin-top: 15px; font-weight: 500;">
                     {message}
                 </p>
             </div>
@@ -740,14 +700,14 @@ def show_skeleton_loaders(rows=3, slot=None):
 
 
 def display_animated_progress(value, max_value=100, label="Progreso"):
-    """Barra de progreso neumórfica animada (progressFill desde 0%)."""
+    """Barra de progreso animada (progressFill desde 0%)."""
     percentage = (value / max_value) * 100
     st.markdown(
         f"""
         <div style="margin: 15px 0;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                <span style="font-size: 0.85rem; color: #6b7280; font-weight: 500;">{label}</span>
-                <span style="font-size: 0.85rem; color: #0066FF; font-weight: 600;">{percentage:.1f}%</span>
+                <span style="font-size: 0.85rem; color: #94a3b8; font-weight: 500;">{label}</span>
+                <span style="font-size: 0.85rem; color: #4d94ff; font-weight: 600;">{percentage:.1f}%</span>
             </div>
             <div class="progress-bar-container">
                 <div class="progress-bar" style="width: {percentage}%;"></div>
@@ -779,161 +739,44 @@ def display_badge_with_pulse(text, color="#0066FF", inline=False):
     st.markdown(html, unsafe_allow_html=True)
 
 
-def dark_neumorphism_css():
-    """Paleta Neumorphism oscura: misma estructura visual, sombras y brillos
-    recalculados para superficie #111827. Se inyecta DESPUÉS del CSS claro,
-    así sus reglas ganan por orden de cascada sin necesidad de !important."""
-    return """
-    <style>
-    /* ================= DARK NEUMORPHISM ================= */
-    .stApp {
-        background: linear-gradient(135deg, #111827 0%, #0b101b 100%);
-        color: #e5e7eb;
-    }
+# ==========================================
+# PLOTLY: TEMA SaaS PARA TODOS LOS GRÁFICOS
+# ==========================================
+NEON_AZUL = "#0066FF"
+NEON_CIAN = "#00CED1"
+PALETA_RECOMENDACION = {
+    "🔥 FIRMAR AHORA": "#FF4757",
+    "👀 OBSERVAR": "#FFA502",
+    "⚠️ DESCARTAR": "#64748B",
+}
 
-    .neumorphic-card {
-        background: #111827;
-        box-shadow:
-            8px 8px 16px #05070c,
-            -8px -8px 16px #1f2a3d;
-    }
-    .neumorphic-card:hover {
-        box-shadow:
-            12px 12px 24px #05070c,
-            -12px -12px 24px #24314a;
-    }
 
-    .kpi-card {
-        background: linear-gradient(145deg, #182236, #111827);
-        box-shadow:
-            5px 5px 10px #05070c,
-            -5px -5px 10px #1f2a3d;
-    }
-    .kpi-card:hover {
-        box-shadow:
-            8px 8px 16px #05070c,
-            -8px -8px 16px #24314a;
-    }
-    .kpi-value {
-        color: #6ba3ff;
-        text-shadow: 0 0 12px rgba(107, 163, 255, 0.35);
-    }
-    .kpi-label { color: #9ca3af; }
-
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #131a29 0%, #0e1420 100%);
-        box-shadow: 4px 0 10px rgba(0,0,0,0.4);
-    }
-
-    [data-testid="stMetric"] {
-        background: linear-gradient(145deg, #182236, #111827);
-        box-shadow:
-            4px 4px 8px #05070c,
-            -4px -4px 8px #1f2a3d;
-    }
-
-    .stButton > button {
-        background: linear-gradient(145deg, #0066FF, #0052CC);
-        box-shadow:
-            4px 4px 8px #05070c,
-            -4px -4px 8px #1f2a3d;
-    }
-    .stButton > button:hover {
-        box-shadow:
-            6px 6px 12px #05070c,
-            -6px -6px 12px #24314a;
-    }
-
-    /* Compatibilidad 1.64: botón real en el tema oscuro */
-    [data-testid="stBaseButton-secondary"] {
-        background: linear-gradient(145deg, #0066FF, #0052CC);
-        box-shadow:
-            4px 4px 8px #05070c,
-            -4px -4px 8px #1f2a3d;
-    }
-    [data-testid="stBaseButton-secondary"]:hover {
-        box-shadow:
-            6px 6px 12px #05070c,
-            -6px -6px 12px #24314a,
-            0 0 20px rgba(0, 102, 255, 0.4);
-    }
-
-    .stTextInput > div > div > input,
-    .stSelectbox > div > div > select {
-        background: #111827;
-        color: #e5e7eb;
-        box-shadow:
-            inset 2px 2px 4px #05070c,
-            inset -2px -2px 4px #1f2a3d;
-    }
-
-    h1, h2, h3 { color: #f3f4f6; }
-    p, li, span { color: #d1d5db; }
-
-    /* Internos de la card de artista en oscuro */
-    .artist-name { color: #f3f4f6; }
-    .artist-meta { color: #9ca3af; }
-    .score-value { color: #6ba3ff; }
-    .artist-track { color: #cbd5e1; }
-    .insight-pill {
-        background: rgba(0, 102, 255, 0.12);
-    }
-    .insight-pill span { color: #93c5fd; }
-    .stat-label { color: #9ca3af; }
-    .stat-value-blue { color: #6ba3ff; }
-    .stat-value-dark { color: #f3f4f6; }
-    .viral-track { background: #1f2a3d; }
-    .viral-fill { background: linear-gradient(90deg, #0066FF, #6ba3ff); }
-    .deezer-link { color: #6ba3ff; }
-
-    .artist-photo {
-        box-shadow:
-            4px 4px 8px #05070c,
-            -4px -4px 8px #1f2a3d;
-    }
-
-    /* Componentes premium en oscuro */
-    .spinner {
-        border-color: #1f2a3d;
-        border-top-color: #6ba3ff;
-        box-shadow:
-            0 0 10px rgba(107, 163, 255, 0.3),
-            inset 0 0 10px rgba(107, 163, 255, 0.1);
-    }
-    .loading-spinner p { color: #9ca3af !important; }
-    .skeleton,
-    .skeleton-circle {
-        background: linear-gradient(90deg, #182236 25%, #1f2a3d 50%, #182236 75%);
-        background-size: 200% 100%;
-    }
-    .progress-bar-container {
-        background: #111827;
-        box-shadow:
-            inset 2px 2px 4px #05070c,
-            inset -2px -2px 4px #1f2a3d;
-    }
-
-    hr { border-color: #1f2a3d; }
-
-    /* Widgets nativos: el contenedor de chips del multiselect toma el
-       secondaryBackgroundColor del tema global mediante clases emotion
-       (hashes inestables entre versiones, sin atributos baseweb en 1.64).
-       Transparencia estructural: el gradiente oscuro del sidebar se ve a
-       través, y los chips azules (spans) conservan su acento. */
-    header[data-testid="stHeader"] { background: transparent; }
-    [data-testid="stSidebar"] [data-testid="stMultiSelect"] div {
-        background-color: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stMultiSelect"] input {
-        color: #e5e7eb !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stSlider"] {
-        color: #9ca3af;
-    }
-    </style>
-    """
+def estilo_plotly(fig, alto=360, leyenda=False):
+    """Fondo transparente + tipografía clara: el gráfico flota sobre el
+    glassmorphism sin caja blanca (look Bloomberg/Spotify for Artists)."""
+    fig.update_layout(
+        height=alto,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Inter, 'Segoe UI', sans-serif", size=12, color="#cbd5e1"),
+        title=dict(font=dict(size=15, color="#e2e8f0"), x=0.01, xanchor="left"),
+        margin=dict(l=10, r=10, t=46, b=10),
+        showlegend=leyenda,
+        legend=dict(font=dict(size=11), bgcolor="rgba(0,0,0,0)"),
+    )
+    fig.update_xaxes(
+        gridcolor="rgba(255,255,255,0.06)",
+        zerolinecolor="rgba(255,255,255,0.12)",
+        linecolor="rgba(255,255,255,0.15)",
+        tickfont=dict(color="#94a3b8"),
+    )
+    fig.update_yaxes(
+        gridcolor="rgba(255,255,255,0.06)",
+        zerolinecolor="rgba(255,255,255,0.12)",
+        linecolor="rgba(255,255,255,0.15)",
+        tickfont=dict(color="#94a3b8"),
+    )
+    return fig
 
 
 load_custom_css()
@@ -1025,6 +868,12 @@ if primera_carga:
     load_slot.empty()
     st.session_state.carga_completada = True
 
+# Barra de estado SaaS: indicador de salud + tamaño del universo vigilado
+st.markdown(
+    f"🟢 **En línea** · **{len(df)}** artistas monitorizados · Fuente: "
+    "**Deezer API** · Robot semanal (GitHub Actions)"
+)
+
 # ==========================================
 # FORECASTING DE CRECIMIENTO (Módulo 5)
 # ==========================================
@@ -1040,16 +889,6 @@ def cargar_forecast():
     import forecast_fans
     return forecast_fans.fit_and_forecast(save_png=False)
 
-
-# ── Tema claro/oscuro (Neumorphism) ─────────────────────────────────────
-# La preferencia vive en st.session_state: persiste durante la sesión y el
-# toggle la cambia al instante (re-render con la hoja oscura inyectada).
-if "tema_oscuro" not in st.session_state:
-    st.session_state.tema_oscuro = False
-
-st.sidebar.toggle("🌙 Modo oscuro", key="tema_oscuro")
-if st.session_state.tema_oscuro:
-    st.markdown(dark_neumorphism_css(), unsafe_allow_html=True)
 
 st.sidebar.header("🗂️ Vistas")
 vista_tab = st.sidebar.radio(
@@ -1108,7 +947,7 @@ if vista_tab == "🌍 Touring":
 
     st.divider()
 
-    # Mapa con tema oscuro premium (CartoDB dark_matter) — coherente con el
+    # Mapa con tema oscuro premium (Esri Dark Gray Canvas) — coherente con el
     # design system. st_folium vacío de returned_objects: el mapa es de
     # solo-lectura y así Streamlit NO re-ejecuta el script en cada drag/zoom.
     import folium
@@ -1265,23 +1104,69 @@ if vista_tab == "🔮 Forecasting 6M":
     )
     st.stop()
 
-# Sidebar - Filtros (literales con emoji: en el pegado del tutorial se perdieron)
-st.sidebar.header("🎛️ Filtros de Búsqueda")
-recommendation_filter = st.sidebar.multiselect(
-    "Recomendación A&R",
-    options=sorted(df["ar_recommendation"].unique()),
-    default=["🔥 FIRMAR AHORA", "👀 OBSERVAR"],
+# ==========================================
+# VISTA 1: SCOUTING
+# ==========================================
+
+# ── BUSCADOR DE ARTISTAS (Fase 2) ────────────────────────────────────────
+# Búsqueda en tiempo real por nombre: substring, case-insensitive y sin
+# regex (el usuario escribe texto libre, p. ej. "C+" no debe explotar).
+st.sidebar.header("🔍 Buscar Artista")
+busqueda = st.sidebar.text_input(
+    "Nombre del artista",
+    placeholder="Ej: KAROL G, Feid, Marc Anthony…",
+    label_visibility="collapsed",
 )
 
-min_score = st.sidebar.slider("Scouting Score Mínimo", 0, 100, 0)
+patron = busqueda.strip()
+if patron:
+    df_busqueda = df[
+        df["artist_name"].str.contains(patron, case=False, na=False, regex=False)
+    ].sort_values("scouting_score", ascending=False)
+    if df_busqueda.empty:
+        st.sidebar.warning("Sin coincidencias en el universo monitorizado")
+    else:
+        st.sidebar.success(f"✅ {len(df_busqueda)} artista(s) encontrado(s)")
+        st.sidebar.caption(
+            "🔎 Modo búsqueda: el nombre manda — los filtros de recomendación "
+            "y score quedan en pausa para que encuentres a CUALQUIER artista "
+            "del universo."
+        )
+    df_filtered = df_busqueda
+else:
+    st.sidebar.header("🎛️ Filtros de Búsqueda")
+    # Default = TODO el universo: con 151 artistas la paginación y el
+    # histograma pierden sentido si DESCARTAR (la cola larga) está oculta.
+    recommendation_filter = st.sidebar.multiselect(
+        "Recomendación A&R",
+        options=sorted(df["ar_recommendation"].unique()),
+        default=sorted(df["ar_recommendation"].unique()),
+    )
 
-# Filtrar datos
-df_filtered = df[
-    (df["ar_recommendation"].isin(recommendation_filter))
-    & (df["scouting_score"] >= min_score)
-].sort_values("scouting_score", ascending=False)
+    min_score = st.sidebar.slider("Scouting Score Mínimo", 0, 100, 0)
 
-# KPIs con estilo Neumorphism (Fase 2)
+    # Filtrar datos
+    df_filtered = df[
+        (df["ar_recommendation"].isin(recommendation_filter))
+        & (df["scouting_score"] >= min_score)
+    ].sort_values("scouting_score", ascending=False)
+
+if df_filtered.empty:
+    if patron:
+        st.warning(
+            f"🔎 Sin resultados para **“{patron}”** en el universo de "
+            f"{len(df)} artistas monitorizados."
+        )
+    else:
+        st.warning("🎛️ Ningún artista cumple los filtros seleccionados.")
+    st.info(
+        "💡 Prueba con: **"
+        + "**, **".join(df.nlargest(3, "deezer_fans")["artist_name"].tolist())
+        + "**"
+    )
+    st.stop()
+
+# KPIs estilo Bloomberg (Fase 2)
 display_kpi_grid(
     [
         ("Total Artistas Analizados", len(df_filtered), "👥"),
@@ -1299,7 +1184,7 @@ st.divider()
 
 # Cache de fotos: un solo request por URL aunque Streamlit re-renderice.
 # Devuelve data URI para embeber la imagen en el HTML de las cards
-# neumórficas (y fallback local si la CDN falla).
+# glassmórficas (y fallback local si la CDN falla).
 @st.cache_data(show_spinner=False, ttl=3600)
 def cargar_foto_uri(url):
     try:
@@ -1319,7 +1204,7 @@ def cargar_foto_uri(url):
 
 _SVG_PLACEHOLDER = (
     '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">'
-    '<rect width="100" height="100" fill="#e5e7eb"/>'
+    '<rect width="100" height="100" fill="#1f2a3d"/>'
     '<text x="50" y="55" font-size="30" text-anchor="middle">🎼</text></svg>'
 )
 _SVG_PLACEHOLDER_B64 = base64.b64encode(_SVG_PLACEHOLDER.encode()).decode()
@@ -1342,34 +1227,182 @@ for pos, (_, row) in enumerate(top_10.iterrows()):
         unsafe_allow_html=True,
     )
 
+# ==========================================
+# ANALYTICS DEL UNIVERSO (Fase 5: Plotly)
+# ==========================================
+st.markdown("---")
+st.subheader("📊 Analytics del Universo Scouting")
+
+col_hist, col_donut = st.columns(2)
+with col_hist:
+    fig_hist = px.histogram(
+        df_filtered,
+        x="scouting_score",
+        nbins=20,
+        title="Distribución de Scouting Scores",
+        color_discrete_sequence=[NEON_AZUL],
+    )
+    fig_hist.update_layout(bargap=0.08)
+    st.plotly_chart(
+        estilo_plotly(fig_hist),
+        use_container_width=True,
+        config={"displayModeBar": False},
+        key="chart_hist_scores",
+    )
+
+with col_donut:
+    reco_counts = (
+        df_filtered["ar_recommendation"]
+        .value_counts()
+        .reset_index()
+    )
+    reco_counts.columns = ["recomendacion", "artistas"]
+    fig_donut = px.pie(
+        reco_counts,
+        names="recomendacion",
+        values="artistas",
+        hole=0.55,
+        title="Recomendaciones A&R",
+        color="recomendacion",
+        color_discrete_map=PALETA_RECOMENDACION,
+    )
+    fig_donut.update_traces(
+        textinfo="percent",
+        marker=dict(line=dict(color="#0a0e27", width=2)),
+    )
+    st.plotly_chart(
+        estilo_plotly(fig_donut, leyenda=True),
+        use_container_width=True,
+        config={"displayModeBar": False},
+        key="chart_donut_reco",
+    )
+
+# Top N en barras horizontales (respeta búsqueda y filtros activos)
+top_chart = df_filtered.head(10).iloc[::-1]  # mejor score arriba
+fig_top = px.bar(
+    top_chart,
+    x="scouting_score",
+    y="artist_name",
+    orientation="h",
+    title="Top 10 por Scouting Score",
+    color="ar_recommendation",
+    color_discrete_map=PALETA_RECOMENDACION,
+    text_auto=".0f",
+    height=420,
+)
+fig_top.update_traces(textposition="outside", cliponaxis=False)
+fig_top.update_yaxes(title=None)
+st.plotly_chart(
+    estilo_plotly(fig_top, alto=420),
+    use_container_width=True,
+    config={"displayModeBar": False},
+    key="chart_top10",
+)
+
+col_scatter, col_genero = st.columns(2)
+with col_scatter:
+    fig_scatter = px.scatter(
+        df_filtered,
+        x="deezer_fans",
+        y="scouting_score",
+        color="ar_recommendation",
+        color_discrete_map=PALETA_RECOMENDACION,
+        hover_name="artist_name",
+        log_x=True,
+        title="Score vs Fans (escala log)",
+        labels={"deezer_fans": "Fans Deezer (log)", "scouting_score": "Scouting Score"},
+    )
+    st.plotly_chart(
+        estilo_plotly(fig_scatter, leyenda=True),
+        use_container_width=True,
+        config={"displayModeBar": False},
+        key="chart_scatter_fans",
+    )
+
+with col_genero:
+    # El género llega del seed expandido (Fase 1); en un warehouse reconstruido
+    # por bootstrap (sin la columna) la gráfica se omite con elegancia.
+    if "genero" in df_filtered.columns:
+        fans_genero = (
+            df_filtered.groupby("genero", as_index=False)["deezer_fans"]
+            .median()
+            .sort_values("deezer_fans", ascending=False)
+        )
+        fig_genero = px.bar(
+            fans_genero,
+            x="deezer_fans",
+            y="genero",
+            orientation="h",
+            title="Fans (mediana) por Género",
+            color_discrete_sequence=[NEON_CIAN],
+        )
+        fig_genero.update_yaxes(title=None)
+        st.plotly_chart(
+            estilo_plotly(fig_genero),
+            use_container_width=True,
+            config={"displayModeBar": False},
+            key="chart_genero_fans",
+        )
+
+# ==========================================
+# PAGINACIÓN: TODOS LOS ARTISTAS (Fase 3)
+# ==========================================
+st.markdown("---")
+st.subheader("🗂️ Todos los Artistas")
+
+ARTISTAS_POR_PAGINA = 20
+total_paginas = max(1, math.ceil(len(df_filtered) / ARTISTAS_POR_PAGINA))
+pagina_actual = st.select_slider(
+    "Página",
+    options=list(range(1, total_paginas + 1)),
+    value=1,
+    label_visibility="collapsed",
+)
+
+inicio = (pagina_actual - 1) * ARTISTAS_POR_PAGINA
+pagina_df = df_filtered.iloc[inicio : inicio + ARTISTAS_POR_PAGINA]
+st.caption(
+    f"Mostrando {len(pagina_df)} de {len(df_filtered)} artistas "
+    f"(página {pagina_actual} de {total_paginas})"
+)
+
+cols_grid = st.columns(2)
+for idx, (_, artista) in enumerate(pagina_df.iterrows()):
+    with cols_grid[idx % 2]:
+        st.markdown(
+            artist_card_compacto_html(artista, index=idx),
+            unsafe_allow_html=True,
+        )
+
 # Tabla completa exportable
 st.subheader("📋 Base de Datos Completa")
+columnas_tabla = [
+    "artist_name",
+    "scouting_score",
+    "probabilidad_viral",
+    "ar_recommendation",
+    "deezer_fans",
+    "deezer_rank",
+    "top_track_name",
+    "fan_rank_ratio",
+    "strategic_insight",
+]
+rename_tabla = {
+    "artist_name": "Artista",
+    "scouting_score": "Score",
+    "probabilidad_viral": "Prob. Viral 6M",
+    "ar_recommendation": "Recomendación",
+    "deezer_fans": "Fans",
+    "deezer_rank": "Rank",
+    "top_track_name": "Top Track",
+    "fan_rank_ratio": "Fan/Rank Ratio",
+    "strategic_insight": "Insight",
+}
+if "genero" in df_filtered.columns:
+    columnas_tabla.insert(1, "genero")
+    rename_tabla["genero"] = "Género"
 st.dataframe(
-    df_filtered[
-        [
-            "artist_name",
-            "scouting_score",
-            "probabilidad_viral",
-            "ar_recommendation",
-            "deezer_fans",
-            "deezer_rank",
-            "top_track_name",
-            "fan_rank_ratio",
-            "strategic_insight",
-        ]
-    ].rename(
-        columns={
-            "artist_name": "Artista",
-            "scouting_score": "Score",
-            "probabilidad_viral": "Prob. Viral 6M",
-            "ar_recommendation": "Recomendación",
-            "deezer_fans": "Fans",
-            "deezer_rank": "Rank",
-            "top_track_name": "Top Track",
-            "fan_rank_ratio": "Fan/Rank Ratio",
-            "strategic_insight": "Insight",
-        }
-    ),
+    df_filtered[columnas_tabla].rename(columns=rename_tabla),
     use_container_width=True,
     hide_index=True,
 )

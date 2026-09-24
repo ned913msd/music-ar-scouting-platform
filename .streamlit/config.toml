@@ -1,8 +1,11 @@
 [theme]
+# Tema base Cyberpunk Enterprise: coincide con el CSS de app.py
+# (fondo #0a0e27, superficie #161c42, acento #0066FF)
+base = "dark"
 primaryColor = "#0066FF"
-backgroundColor = "#F0F2F6"
-secondaryBackgroundColor = "#FFFFFF"
-textColor = "#262730"
+backgroundColor = "#0a0e27"
+secondaryBackgroundColor = "#161c42"
+textColor = "#e2e8f0"
 font = "sans serif"
 
 [server]
