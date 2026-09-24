@@ -53,6 +53,7 @@ CORE_COLS = [
     "top_track_name",
     "top_track_rank",
     "top_track_duration",
+    "genero",  # añadida por expand_database.py (Fase 1): el robot la PRESERVA
 ]
 
 INT_COLS = ["artist_id", "deezer_fans", "deezer_rank", "top_track_rank", "top_track_duration"]
@@ -117,7 +118,9 @@ def actualizar_datos() -> int:
             print(f"❌ Error consultando {nombre}: {e}")
             continue
         if data:
-            filas.append({k: data.get(k) for k in CORE_COLS})
+            fila = {k: data.get(k) for k in CORE_COLS}
+            fila["genero"] = "urbano"  # el watchlist es urbano latino
+            filas.append(fila)
             print(f"✅ {data['artist_name']} | Fans: {int(data['deezer_fans']):,} | Rank: {data['deezer_rank']}")
         else:
             print(f"⚠️ No encontrado: {nombre}")
