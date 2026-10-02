@@ -19,7 +19,20 @@ joblib>=1.3.0
 
 # Analytics del universo scouting (Fase 5): histograma, donut, top-N,
 # scatter score vs fans, fans por género — tema oscuro integrado
-plotly>=5.22.0
+# (pin <6: kaleido v1 exige Chromium en el host; 5.x no lo usa en la web)
+plotly>=5.22.0,<6
+
+# Autenticación SaaS: login por sello (credenciales hasheadas en config.yaml,
+# cookie firmada de sesión) + parseo del yaml
+streamlit-authenticator>=0.4.2
+PyYAML>=6.0
+
+# Informe Ejecutivo PDF (entregable ejecutivo en memoria, io.BytesIO): fpdf2
+# renderiza el documento; matplotlib (ya requerido) dibuja el gráfico estático
+# del PDF. Kaleido QUEDA EXCLUÍDO a propósito: lanza un Chromium embebido de
+# ~80MB por subproceso y su handshake se cuelga en hosts headless (verificado
+# en Windows); el mismo gráfico se renderiza in-process con matplotlib.
+fpdf2>=2.7.0
 
 # Forecasting de series de tiempo (Módulo 5): Prophet; el módulo hace
 # fallback transparente a sklearn si el entorno no puede instalarlo

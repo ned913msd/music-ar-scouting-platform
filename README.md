@@ -6,13 +6,13 @@
 [![dbt](https://img.shields.io/badge/dbt-Core-orange)](https://www.getdbt.com/)
 [![DuckDB](https://img.shields.io/badge/DuckDB-Analytics-green)](https://duckdb.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-red)](https://streamlit.io/)
-[![Deployed on Render](https://img.shields.io/badge/Deployed%20on-Render-46E3B7?style=for-the-badge&logo=render)](https://music-ar-scouting-platform.onrender.com/)
+[![Deployed on Streamlit](https://img.shields.io/badge/Deployed%20on-Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://music-ar-scouting-platform-3gppcbtk6chqkpyyaxtc6y.streamlit.app/)
 
 ### 🌐 Demo en Vivo
 
-**URL Pública:** [https://music-ar-scouting-platform.onrender.com/](https://music-ar-scouting-platform.onrender.com/)
+**URL Pública:** [https://music-ar-scouting-platform-3gppcbtk6chqkpyyaxtc6y.streamlit.app/](https://music-ar-scouting-platform-3gppcbtk6chqkpyyaxtc6y.streamlit.app/)
 
-> ⏱️ El servicio corre en el plan gratuito de Render: si estuvo inactivo, la primera carga puede tardar ~50 segundos mientras el servidor despierta (luego responde al instante). La base de datos se auto-inicializa desde el seed del repo gracias a `bootstrap_db.py`.
+> ⏱️ El servicio corre en Streamlit Community Cloud: si estuvo inactivo, la primera carga puede tardar unos segundos mientras el contenedor despierta (luego responde al instante). La base de datos se auto-inicializa desde el seed del repo gracias a `bootstrap_db.py`. El blueprint de Render (`render.yaml`) sigue operativo como despliegue alternativo.
 
 ## 🎯 El Problema de Negocio
 
@@ -279,6 +279,8 @@ Este proyecto demuestra habilidades de Music Data Analyst y Analytics Engineer:
 - [x] **Buscador de artistas en tiempo real (Fase 2)**: búsqueda por nombre (case-insensitive) en el sidebar que recorta KPIs, top 10, analytics y tabla al instante
 - [x] **Tema Cyberpunk Enterprise + Analytics (Fases 3-5)**: glassmorphism, KPIs estilo Bloomberg, paginación de 20 artistas por página y 5 gráficas Plotly con tema oscuro integrado (histograma de scores, donut de recomendaciones, top-N, scatter log fans vs score, fans por género)
 - [x] **Perfil de artista multi-plataforma**: cards clickeables (Top 10 y paginación) que abren una ficha exclusiva con router `st.session_state` — hub de 5 plataformas (Spotify/YouTube/Apple/TikTok/Deezer con factores de industria declarados), gráfico comparativo log y insights estratégicos; sidebar reordenado Buscar → Vistas → Filtros
+- [x] **Login SaaS (seguridad)**: `streamlit-authenticator` con credenciales hasheadas bcrypt en `config.yaml` y cookie de sesión firmada (30 días) — sin sesión activa no se renderiza ni un dato, solo la pantalla de acceso; cada sello tiene su propio acceso y logout en la sidebar
+- [x] **Informe Ejecutivo PDF (entregable)**: `reporte_pdf.py` genera con fpdf2 el dossier del artista (foto, veredicto A&R, KPIs, tabla y gráfico de alcance multi-plataforma, insights estratégicos y plan de gira con ROI del motor Touring) 100% en memoria (`io.BytesIO`, Render-safe); fuentes Unicode DejaVu embebidas para acentos, botón de descarga en el perfil y en Exportar Datos (Top 1 del ranking activo)
 
 ## 👤 Sobre el Autor
 

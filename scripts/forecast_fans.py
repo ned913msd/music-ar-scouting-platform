@@ -15,15 +15,20 @@
 #   El dashboard NO sabe qué motor corrió: consume el PNG y el resumen igual.
 #
 # Datos:
-#   El histórico del curso (24 meses, KAROL G) alimenta el demo. La
-#   infraestructura está lista para alimentar el modelo con snapshots reales:
-#   cada corrida del robot (scripts/daily_update.py) ya es un punto temporal
-#   del fandom; con 6+ snapshots el histórico simulado se sustituye por el
-#   acumulado real sin cambiar una línea de este módulo.
+#   El histórico del curso (24 meses, KAROL G) alimenta el demo cuando el
+#   módulo se invoca SIN parámetros (CLI y tests). El dashboard pasa además
+#   artista + fans actuales: entonces la serie se sintetiza para terminar
+#   EXACTAMENTE en el fandom del artista elegido (forecast dinámico por
+#   artista, en vez del histórico fijo de KAROL G).
+#   La infraestructura está lista para alimentar el modelo con snapshots
+#   reales: cada corrida del robot (scripts/daily_update.py) ya es un punto
+#   temporal del fandom; con 6+ snapshots el histórico simulado se sustituye
+#   por el acumulado real sin cambiar una línea de este módulo.
 #
 # Uso:
 #   ./venv/Scripts/python scripts/forecast_fans.py     → guarda PNG en notebooks/
 #   import forecast_fans; forecast_fans.fit_and_forecast(save_png=False)
+#   forecast_fans.fit_and_forecast(artista="Feid", fans_actuales=9_000_000)
 # ============================================================================
 
 import sys
@@ -42,7 +47,7 @@ import pandas as pd
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(REPO_ROOT, "notebooks")
-OUT_PNG = os.path.join(OUT_DIR, "karol_g_fans_forecast.png")
+OUT_PNG = os.path.join(OUT_DIR, "karol_g_fans_forecast.png")  # CLI por defecto
 
 ARTISTA = "KAROL G"
 MESES_FUTUROS = 6
@@ -62,6 +67,22 @@ def _meses_futuros_historico(n_meses: int) -> pd.DatetimeIndex:
     fin = pd.Timestamp.today().normalize() + pd.offsets.MonthEnd(0)
     return pd.date_range(end=fin, periods=n_meses, freq="ME")
 
+
+def _slug(artista: str) -> str:
+    """Nombre de archivo seguro para el PNG por artista."""
+    limpio = "".join(c if c.isalnum() else "_" for c in artista.lower())
+    return limpio.strip("_") or "artista"
+
+
+# Pendiente de la curva sintética: crecimiento acumulado de 24 meses.
+# Un modelo de fans sin señal daría la MISMA pendiente para todos los
+# artistas (la curva es invariante a escala), así que se interpola entre
+# CREC_24M_MIN y CREC_24M_MAX con `momentum` (probabilidad de viralidad
+# 0→1 del modelo ML): artista frío = crecimiento lento, artista viral
+# explosivo.
+CREC_24M_MIN = 0.15
+CREC_24M_MAX = 1.50
+
 # Histórico mensual simulado (fans de Deezer) — 24 meses, tendencia del curso
 HISTORICO_FANS = [
     1_500_000, 1_650_000, 1_800_000, 2_000_000, 2_200_000, 2_450_000,
@@ -69,6 +90,20 @@ HISTORICO_FANS = [
     3_700_000, 3_850_000, 4_000_000, 4_200_000, 4_400_000, 4_600_000,
     4_800_000, 5_000_000, 5_200_000, 5_450_000, 5_700_000, 6_000_000,
 ]
+
+
+def _historico_sintetico(fans_actuales: float, momentum: float | None = None) -> np.ndarray:
+    """Serie mensual de 24 puntos que termina EN los fans actuales.
+
+    La API pública de Deezer solo devuelve el contador de fans de HOY, no su
+    historia: se reconstruye una curva de crecimiento compuesto para que
+    Prophet/sklearn tengan de dónde proyectar. El punto final es SIEMPRE el
+    fandom real del artista; `momentum` (0→1) fija cuánto creció en el tramo.
+    """
+    m = 0.0 if momentum is None else min(max(float(momentum), 0.0), 1.0)
+    crecimiento_24m = CREC_24M_MIN + m * (CREC_24M_MAX - CREC_24M_MIN)
+    inicio = fans_actuales / (1.0 + crecimiento_24m)
+    return np.geomspace(inicio, fans_actuales, 24)
 
 
 def _prophet_forecast(y: np.ndarray):
@@ -116,9 +151,49 @@ def _sklearn_forecast(y: np.ndarray):
     return pred, pred - banda, pred + banda, fechas, "scikit-learn (LinearRegression)"
 
 
-def fit_and_forecast(save_png: bool = True):
-    """Entrena, proyecta 6 meses y construye la figura. Retorna dict con todo."""
-    y = np.asarray(HISTORICO_FANS, dtype=float)
+def fit_and_forecast(
+    artista: str | None = None,
+    fans_actuales: int | float | None = None,
+    momentum: float | None = None,
+    save_png: bool = True,
+):
+    """Entrena, proyecta 6 meses y construye la figura. Retorna dict con todo.
+
+    Parámetros:
+      artista: nombre a mostrar en título/CSV. Si viene None → KAROL G.
+      fans_actuales: fans de Deezer de HOY de ese artista. Si se pasa, el
+        histórico se sintetiza para terminar en ese valor (forecast dinámico
+        por artista); sin dato y sin artista se usa el histórico curado.
+      momentum: probabilidad de viralidad del modelo ML en 0–100. Fija la
+        pendiente de la curva (15% → 150% acumulado a 24 meses).
+
+    Sin parámetros conserva el comportamiento original del CLI/tests.
+    """
+    nombre = (artista or ARTISTA).strip() or ARTISTA
+    momentum_01 = None
+    if momentum is not None and np.isfinite(float(momentum)):
+        momentum_01 = min(max(float(momentum) / 100.0, 0.0), 1.0)
+
+    valido = (
+        fans_actuales is not None
+        and np.isfinite(float(fans_actuales))
+        and float(fans_actuales) > 0
+    )
+    if valido:
+        y = _historico_sintetico(float(fans_actuales), momentum_01)
+        pend = 0.0 if momentum_01 is None else momentum_01 * 100
+        origen = (
+            "sintético (fans actuales + pendiente por viralidad "
+            f"{pend:.0f}%, 24 meses)"
+        )
+    elif artista is None:
+        y = np.asarray(HISTORICO_FANS, dtype=float)
+        origen = "histórico curado del curso (24 meses)"
+    else:
+        raise ValueError(
+            f"Sin métrica de fans actual para {nombre}: no hay histórico "
+            "proyectable."
+        )
 
     resultado = _prophet_forecast(y)
     if resultado is None:
@@ -146,7 +221,7 @@ def fit_and_forecast(save_png: bool = True):
     ax.fill_between(
         fechas_fut, lo / 1e6, hi / 1e6, color="#d62728", alpha=0.15, label="Banda de confianza 95%"
     )
-    ax.set_title(f"Proyección de Crecimiento de Fans: {ARTISTA} (próximos 6 meses)", fontsize=13)
+    ax.set_title(f"Proyección de Crecimiento de Fans: {nombre} (próximos 6 meses)", fontsize=13)
     ax.set_xlabel("Fecha")
     ax.set_ylabel("Fans en Deezer (millones)")
     ax.legend()
@@ -156,12 +231,17 @@ def fit_and_forecast(save_png: bool = True):
 
     if save_png:
         os.makedirs(OUT_DIR, exist_ok=True)
-        fig.savefig(OUT_PNG, dpi=120)
-        print(f"🖼️ Gráfico guardado: {OUT_PNG}")
+        if nombre.upper() == ARTISTA.upper():
+            ruta_png = OUT_PNG
+        else:
+            ruta_png = os.path.join(OUT_DIR, f"{_slug(nombre)}_fans_forecast.png")
+        fig.savefig(ruta_png, dpi=120)
+        print(f"🖼️ Gráfico guardado: {ruta_png}")
 
     return {
-        "artista": ARTISTA,
+        "artista": nombre,
         "engine": engine,
+        "origen_historico": origen,
         "fans_hoy": int(y[-1]),
         "forecast": df_fc,
         "crecimiento_6m_pct": round(float(crecimiento_total), 1),

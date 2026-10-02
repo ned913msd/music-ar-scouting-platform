@@ -6,6 +6,11 @@ import pandas as pd
 import duckdb
 import joblib
 import os
+import yaml
+
+import streamlit_authenticator as stauth
+
+from reporte_pdf import generar_reporte_pdf
 import plotly.express as px
 import plotly.graph_objects as go
 from PIL import Image
@@ -782,6 +787,67 @@ def estilo_plotly(fig, alto=360, leyenda=False):
 
 load_custom_css()
 
+# ==========================================
+# AUTENTICACIÓN SaaS: cada sello tiene su propio acceso. config.yaml trae las
+# credenciales con hash bcrypt (nunca en claro) y la cookie firmada (30 días).
+# Sin sesión activa la app NO renderiza NI UN dato: solo la pantalla de acceso.
+# ==========================================
+@st.cache_data
+def cargar_config_auth():
+    """Config de autenticación (yaml parseado 1 vez por proceso)."""
+    ruta_config = os.path.join(os.path.dirname(__file__), "config.yaml")
+    with open(ruta_config, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+config_auth = cargar_config_auth()
+# Instancia por corrida (patrón documentado del paquete): el objeto maneja
+# cookies y estado de sesión de Streamlit, no se cachea.
+authenticator = stauth.Authenticate(
+    credentials=config_auth["credentials"],
+    cookie_name=config_auth["cookie"]["name"],
+    cookie_key=config_auth["cookie"]["key"],
+    cookie_expiry_days=float(config_auth["cookie"]["expiry_days"]),
+)
+
+if not st.session_state.get("authentication_status"):
+    # ---- PANTALLA DE LOGIN: única cosa visible sin sesión ----
+    st.markdown(
+        """
+        <div class="glass-card" style="max-width: 660px; margin: 28px auto 14px; text-align: center;">
+            <h1 style="margin-bottom: 6px;">🎵 A&R Scouting Command Center</h1>
+            <p style="color: #94a3b8; margin: 0;">
+                Plataforma SaaS de scouting musical: datos REALES de Deezer API,
+                predicción ML de viralidad a 6 meses y simulación de gira.
+                Acceso exclusivo para sellos y managers.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    _, col_login, _ = st.columns([1, 1.5, 1])
+    with col_login:
+        try:
+            authenticator.login(
+                fields={
+                    "Form name": "🔐 Acceso para Sellos & Managers",
+                    "Username": "Usuario",
+                    "Password": "Contraseña",
+                    "Login": "Ingresar",
+                }
+            )
+        except Exception as e:
+            st.error(f"⚠️ Error del módulo de autenticación: {e}")
+    if st.session_state.get("authentication_status") is False:
+        st.error("⛔ Usuario o contraseña incorrectos. Intenta de nuevo.")
+    st.caption("Sesión protegida con cookie firmada (30 días) · Contraseñas hasheadas con bcrypt")
+    st.stop()
+
+# ---- AUTENTICADO: identidad + logout arriba de la sidebar ----
+st.sidebar.markdown(f"👤 **{st.session_state.get('name', 'Usuario')}**")
+authenticator.logout(button_name="🚪 Cerrar sesión", location="sidebar", key="btn_logout")
+st.sidebar.divider()
+
 # Carga del modelo ML (serializado desde el notebook con joblib) — cacheado
 # para que se deserialice una sola vez por sesión, no en cada re-render
 @st.cache_resource
@@ -885,17 +951,30 @@ st.markdown(
 # ==========================================
 # FORECASTING DE CRECIMIENTO (Módulo 5)
 # ==========================================
-# El gráfico se genera una vez por proceso (no en cada re-render): Prophet o
-# su fallback sklearn solo se ejecutan cuando la app arranca o pasa la TTL.
+# El gráfico se genera una vez por artista y se cachea 24 h (Prophet o su
+# fallback sklearn solo corren la primera vez que se pide cada artista):
+# cambiar de pestaña ni de artista repeten el entrenamiento.
 @st.cache_resource(ttl=86400)
-def cargar_forecast():
+def cargar_forecast(
+    artista: str,
+    fans_actuales: int | None = None,
+    momentum: float | None = None,
+):
     import sys
 
     # El motor vive en scripts/; añadimos la carpeta al path para que el
     # import funcione igual en local y en el contenedor de Render.
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "scripts"))
+    ruta_scripts = os.path.join(os.path.dirname(__file__), "scripts")
+    if ruta_scripts not in sys.path:
+        sys.path.insert(0, ruta_scripts)
     import forecast_fans
-    return forecast_fans.fit_and_forecast(save_png=False)
+
+    return forecast_fans.fit_and_forecast(
+        artista=artista,
+        fans_actuales=fans_actuales,
+        momentum=momentum,
+        save_png=False,
+    )
 
 
 # ==========================================
@@ -918,6 +997,7 @@ vista_tab = st.sidebar.radio(
     "Selecciona la vista:",
     options=["🎯 Scouting", "🔮 Forecasting 6M", "🌍 Touring"],
     label_visibility="collapsed",
+    key="vista_tab",
 )
 st.sidebar.divider()
 
@@ -1091,6 +1171,69 @@ def mostrar_perfil_artista(artist_name):
         unsafe_allow_html=True,
     )
 
+    # ==========================================
+    # INFORME EJECUTIVO PDF — el entregable para la junta del sello. Se genera
+    # 100% en memoria (io.BytesIO): Render es efímero, el PDF nunca toca disco.
+    # Dos fases (Generar -> Descargar): el PDF se compone 1 vez y queda en
+    # session_state, no en cada re-render del perfil.
+    # ==========================================
+    st.divider()
+    st.subheader("📄 Informe Ejecutivo (PDF)")
+    st.caption(
+        "Entregable para comités e inversores: foto, veredicto A&R, analytics "
+        "multi-plataforma, insights estratégicos y plan de gira con ROI."
+    )
+    nombre_pdf = artista["artist_name"]
+    if st.session_state.get("pdf_generado_para") != nombre_pdf:
+        st.session_state.pop("pdf_bytes_actual", None)
+    if st.button(
+        "⚙️ Generar Informe Ejecutivo",
+        key="btn_pdf_generar_perfil",
+        use_container_width=True,
+        type="primary",
+    ):
+        with st.spinner("Componiendo informe (analytics + gira)..."):
+            try:
+                st.session_state["pdf_bytes_actual"] = generar_reporte_pdf(artista)
+                st.session_state["pdf_generado_para"] = nombre_pdf
+            except Exception as e:
+                st.session_state.pop("pdf_bytes_actual", None)
+                st.error(f"⚠️ No se pudo generar el PDF: {e}")
+    if (
+        st.session_state.get("pdf_bytes_actual") is not None
+        and st.session_state.get("pdf_generado_para") == nombre_pdf
+    ):
+        st.download_button(
+            label="⬇️ Descargar Informe Ejecutivo (PDF)",
+            data=st.session_state["pdf_bytes_actual"],
+            file_name=(
+                f"informe_ejecutivo_{nombre_pdf.replace(' ', '_').lower()}.pdf"
+            ),
+            mime="application/pdf",
+            key="btn_pdf_descargar_perfil",
+            use_container_width=True,
+        )
+
+    # ==========================================
+    # SALTO AL FORECASTING — el router de Vistas resetea `artista_seleccionado`
+    # al cambiar de pestaña, así que el artista viaja en `artista_forecast`
+    # (la key del selectbox de la vista Forecasting). El salto va en un
+    # callback: los callbacks corren ANTES de instanciar los widgets, y
+    # Streamlit prohíbe escribir la key de un radio ya instanciado en el run.
+    # ==========================================
+    def _ir_a_forecasting():
+        st.session_state["artista_forecast"] = nombre_pdf
+        st.session_state["vista_tab"] = "🔮 Forecasting 6M"
+        st.session_state["vista_actual"] = "scouting"
+        st.session_state["artista_seleccionado"] = None
+
+    st.button(
+        "🔮 Ver proyección a 6 meses de fans",
+        key="btn_forecast_perfil",
+        use_container_width=True,
+        on_click=_ir_a_forecasting,
+    )
+
 
 # ROUTER: el perfil se despacha ANTES que las vistas (es un estado
 # transitorio encima de la navegación; cambiar el radio lo cierra)
@@ -1232,17 +1375,65 @@ if vista_tab == "🌍 Touring":
 # debajo de toda la página de Scouting)
 # ==========================================
 if vista_tab == "🔮 Forecasting 6M":
-    # Spinner solo si el forecast no está en cache de proceso (cache hit =
-    # flash innecesario; además Streamlit muestra su spinner nativo)
-    fc_en_cache = "forecast_en_cache" in st.session_state
+    # Selector de artista PROPIO de esta vista. El radio de Vistas resetea
+    # `artista_seleccionado` al cambiar de pestaña (línea del router arriba),
+    # así que el forecast vive en SU estado: `artista_forecast` (widget key).
+    # Antes de esto la vista leía un artista fijo → todo el módulo decía
+    # "KAROL G" sin importar qué artistas filtrara el usuario.
+    st.sidebar.subheader("🔮 Forecasting 6M")
+    _artistas = sorted(df["artist_name"].dropna().unique().tolist())
+    _preferido = st.session_state.get("artista_forecast")
+    if _preferido not in _artistas:
+        _preferido = (
+            "KAROL G"
+            if "KAROL G" in _artistas
+            else (_artistas[0] if _artistas else None)
+        )
+        st.session_state["artista_forecast"] = _preferido
+    artista_nombre = st.sidebar.selectbox(
+        "Artista a proyectar a 6 meses",
+        _artistas,
+        key="artista_forecast",
+        help=(
+            "El modelo se (re)entrena con los fans actuales de este artista: "
+            "título, curva, KPIs y CSV cambian con la selección."
+        ),
+    )
+    st.sidebar.divider()
+
+    _fila_artista = df.loc[df["artist_name"] == artista_nombre]
+    fans_actuales = None
+    momentum_viral = None
+    if not _fila_artista.empty:
+        _fans = pd.to_numeric(_fila_artista.iloc[0].get("deezer_fans"), errors="coerce")
+        if pd.notna(_fans) and float(_fans) > 0:
+            fans_actuales = int(_fans)
+        _viral = pd.to_numeric(
+            _fila_artista.iloc[0].get("probabilidad_viral"), errors="coerce"
+        )
+        if pd.notna(_viral):
+            momentum_viral = float(_viral)
+
+    if fans_actuales is None:
+        st.warning(
+            f"⚠️ Sin métrica de fans actual para **{artista_nombre}**: el "
+            "forecast necesita el contador de Deezer de HOY para anclar la "
+            "proyección."
+        )
+        st.stop()
+
+    # Spinner solo si ESTE artista aún no está en cache de proceso (cache hit
+    # = flash innecesario; además Streamlit muestra su spinner nativo)
+    fc_en_cache = st.session_state.get("forecast_en_cache") == artista_nombre
     fc_slot = None if fc_en_cache else st.empty()
     if not fc_en_cache:
         show_loading_spinner(
-            "Entrenando Prophet y proyectando 6 meses...", slot=fc_slot
+            f"Entrenando Prophet y proyectando 6 meses para {artista_nombre}...",
+            slot=fc_slot,
         )
     try:
-        fc = cargar_forecast()
-        st.session_state.forecast_en_cache = True
+        fc = cargar_forecast(artista_nombre, fans_actuales, momentum_viral)
+        st.session_state.forecast_en_cache = artista_nombre
         if fc_slot is not None:
             fc_slot.empty()
     except Exception as e:
@@ -1272,11 +1463,12 @@ if vista_tab == "🔮 Forecasting 6M":
         st.dataframe(fc["forecast"], use_container_width=True, hide_index=True)
 
     st.caption(
-        f"Motor: **{fc['engine']}** · Histórico demo de 24 meses anclado al mes "
-        "actual (forecast 'evergreen': siempre proyecta los 6 meses siguientes). "
-        "El robot de "
+        f"Motor: **{fc['engine']}** · Histórico: {fc['origen_historico']}, "
+        "anclado al mes actual (forecast 'evergreen': siempre proyecta los 6 "
+        "meses siguientes). El robot de "
         "GitHub Actions (lunes 8 AM) acumula snapshots reales de fans — con 6+ "
-        "puntos este histórico se reemplaza por datos observados sin cambiar código."
+        "puntos este histórico sintético se reemplaza por datos observados sin "
+        "cambiar código."
     )
 
     st.sidebar.divider()
@@ -1618,6 +1810,38 @@ st.sidebar.download_button(
     file_name="ar_scouting_deezer_report.csv",
     mime="text/csv",
 )
+
+# Informe Ejecutivo PDF del #1 del ranking activo (respeta búsqueda y filtros):
+# el atajo "qué artista le mando a la junta hoy" sin entrar al perfil.
+top_uno = df_filtered.iloc[0]
+if st.sidebar.button(
+    f"📄 Informe PDF: {top_uno['artist_name']} (Top 1)",
+    key="btn_pdf_sidebar_top1",
+    use_container_width=True,
+):
+    with st.spinner("Componiendo informe ejecutivo..."):
+        try:
+            st.session_state["pdf_bytes_sidebar"] = generar_reporte_pdf(top_uno)
+            st.session_state["pdf_generado_para_sidebar"] = top_uno["artist_name"]
+        except Exception as e:
+            st.session_state.pop("pdf_bytes_sidebar", None)
+            st.sidebar.error(f"⚠️ No se pudo generar: {e}")
+if (
+    st.session_state.get("pdf_bytes_sidebar") is not None
+    and st.session_state.get("pdf_generado_para_sidebar") == top_uno["artist_name"]
+):
+    st.sidebar.download_button(
+        label="⬇️ Descargar Informe Ejecutivo (PDF)",
+        data=st.session_state["pdf_bytes_sidebar"],
+        file_name=(
+            "informe_ejecutivo_"
+            + top_uno["artist_name"].replace(" ", "_").lower()
+            + ".pdf"
+        ),
+        mime="application/pdf",
+        key="btn_pdf_descargar_sidebar",
+        use_container_width=True,
+    )
 
 # La conexión compartida se cachea por proceso: NO se cierra aquí.
 # Cerrarla en cada render mataba la re-ejecución de Streamlit

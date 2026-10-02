@@ -1,0 +1,28 @@
+# ============================================================================
+# AUTENTICACIÓN — A&R Scouting Command Center
+# streamlit-authenticator (0.4.x): cada sello tiene su propio acceso.
+#
+# MVP: 1 usuario demo. Para crear otro usuario, genera el hash bcrypt y
+# añade su bloque bajo credentials.usernames:
+#
+#   ./venv/Scripts/python -c "from streamlit_authenticator import Hasher; print(Hasher.hash('TU_PASSWORD'))"
+#
+# SEGURIDAD:
+#   - La contraseña NUNCA se guarda en claro: solo su hash bcrypt (irreversible).
+#   - Este archivo se commitea con el hash demo; en producción real rota la
+#     contraseña y migra las credenciales a variables de entorno / gestor de
+#     secretos (los hashes en el repo solo valen para el MVP de demostración).
+#   - cookie.key firma la cookie de sesión: debe ser un secreto no trivial.
+# ============================================================================
+
+credentials:
+  usernames:
+    decano:
+      email: ned913msd@gmail.com
+      name: David NED Bustamante
+      password: $2b$12$1ENyXq.Kxn0lpQ4Q42vjCO2Go6P5CgDDEUnB9kFZr3ex74aZXnzBu
+
+cookie:
+  expiry_days: 30
+  key: a7f3c9e2b8d14f6a9c5e0d7b3f2a8c61e4b9
+  name: ar_scouting_session
