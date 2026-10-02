@@ -20,7 +20,7 @@ credentials:
     decano:
       email: ned913msd@gmail.com
       name: David NED Bustamante
-      password: $2b$12$1ENyXq.Kxn0lpQ4Q42vjCO2Go6P5CgDDEUnB9kFZr3ex74aZXnzBu
+      password: $2b$12$CCgEDjd5UDht2RLlfJ2h4uZW67.Gfpjr3Rk3i6yPBESh1kunEdAwC
 
 cookie:
   expiry_days: 30
