@@ -970,6 +970,9 @@ p { margin-top: 0; }
 .price-tag {
   margin-top: auto;
   align-self: flex-start;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 5px;
   padding: 9px 14px;
   font-size: 0.76rem;
   letter-spacing: 0.1em;
@@ -978,13 +981,24 @@ p { margin-top: 0; }
   border: 1px solid rgba(0, 206, 209, 0.34);
   border-radius: 10px;
 }
+.price-cop {
+  color: var(--text-secondary);
+  font-size: 0.94em;
+  letter-spacing: 0.04em;
+}
 .price-tag.price-free {
   color: var(--text-secondary);
   background: rgba(148, 163, 184, 0.08);
   border-color: rgba(148, 163, 184, 0.26);
 }
 
-.services-cta { display: flex; justify-content: center; }
+.services-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+.services-cta .cta-note { text-align: center; }
 
 /* ---------- 13. FOOTER ---------- */
 .footer {
