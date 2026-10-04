@@ -964,6 +964,28 @@ p { margin-top: 0; }
   color: var(--text-tertiary);
 }
 
+/* ---------- 12b. SERVICIOS ---------- */
+.services-grid { margin-bottom: 46px; }
+
+.price-tag {
+  margin-top: auto;
+  align-self: flex-start;
+  padding: 9px 14px;
+  font-size: 0.76rem;
+  letter-spacing: 0.1em;
+  color: var(--cyan);
+  background: rgba(0, 206, 209, 0.09);
+  border: 1px solid rgba(0, 206, 209, 0.34);
+  border-radius: 10px;
+}
+.price-tag.price-free {
+  color: var(--text-secondary);
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.26);
+}
+
+.services-cta { display: flex; justify-content: center; }
+
 /* ---------- 13. FOOTER ---------- */
 .footer {
   padding: 64px 0 28px;
