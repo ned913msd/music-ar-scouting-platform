@@ -942,6 +942,66 @@ df["est_alcance_max"] = (
     df["deezer_rank"].astype(float) * 2.5 + df["deezer_fans"] * 1.5
 ).astype(int)
 
+# ==========================================
+# FASE 3 — SUPERVIVENCIA DE COX: VENTANA DE FIRMA ÓPTIMA
+# Añade prob_breakout_6m, mes_optimo_firma y riesgo a todo el universo.
+# Las features ADN viven en el seed (la tabla de scoring no las incluye),
+# así que se fusionan por nombre. Si el modelo o lifelines no están, la app
+# sigue funcionando con las columnas vacías en vez de romper.
+# ==========================================
+import sys
+
+_scripts_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts")
+if _scripts_dir not in sys.path:
+    sys.path.insert(0, _scripts_dir)
+
+from prediccion_ventana_firma import FEATURES as COX_FEATURES, predecir_lote
+
+_REPO_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+@st.cache_resource
+def cargar_modelo_cox():
+    """Modelo Cox de Fase 3 (None si falta el archivo o lifelines)."""
+    try:
+        return joblib.load(os.path.join(_REPO_DIR, "models", "cox_model.pkl"))
+    except Exception:
+        return None
+
+
+def cargar_y_predecir_cox(data):
+    """Devuelve `data` con prob_breakout_6m (%), mes_optimo_firma y riesgo."""
+    cph = cargar_modelo_cox()
+
+    faltantes = [c for c in COX_FEATURES if c not in data.columns]
+    if cph is not None and faltantes:
+        seed_path = os.path.join(
+            _REPO_DIR, "ar_dbt_project", "seeds", "deezer_artists_data.csv"
+        )
+        try:
+            seed = pd.read_csv(seed_path)
+            columnas = ["artist_name"] + [
+                c for c in COX_FEATURES if c not in data.columns and c in seed.columns
+            ]
+            data = data.merge(seed[columnas], on="artist_name", how="left")
+        except FileNotFoundError:
+            pass
+
+    if cph is None or any(c not in data.columns for c in COX_FEATURES):
+        data["prob_breakout_6m"] = float("nan")
+        data["mes_optimo_firma"] = pd.NA
+        data["riesgo"] = "—"
+        return data
+
+    pred = predecir_lote(cph, data[COX_FEATURES])
+    data["prob_breakout_6m"] = (pred["prob_breakout_6m"] * 100).round(1)
+    data["mes_optimo_firma"] = pred["mes_optimo_firma"]
+    data["riesgo"] = pred["riesgo"]
+    return data
+
+
+df = cargar_y_predecir_cox(df)
+
 # Barra de estado SaaS: indicador de salud + tamaño del universo vigilado
 st.markdown(
     f"🟢 **En línea** · **{len(df)}** artistas monitorizados · Fuente: "
@@ -1090,6 +1150,17 @@ def mostrar_perfil_artista(artist_name):
             f"Prob. Viralidad 6M: **{artista['probabilidad_viral']:.1f}%**",
             unsafe_allow_html=True,  # el badge inline llega como HTML
         )
+        if pd.notna(artista.get("prob_breakout_6m")):
+            mes_cox = (
+                "sin riesgo en 12M"
+                if pd.isna(artista.get("mes_optimo_firma"))
+                else f"mes {int(artista['mes_optimo_firma'])}"
+            )
+            st.markdown(
+                f"🪧 **Cox:** Prob. breakout 6M **"
+                f"{artista['prob_breakout_6m']:.1f}%** · Mes óptimo de firma: "
+                f"**{mes_cox}** · Riesgo: **{artista.get('riesgo', '—')}**"
+            )
         st.markdown(
             f"🎧 **{int(artista['deezer_fans']):,}** fans · Rank: "
             f"**{int(artista['deezer_rank']):,}** · "
@@ -1773,6 +1844,9 @@ columnas_tabla = [
     "artist_name",
     "scouting_score",
     "probabilidad_viral",
+    "prob_breakout_6m",
+    "mes_optimo_firma",
+    "riesgo",
     "ar_recommendation",
     "deezer_fans",
     "deezer_rank",
@@ -1784,6 +1858,9 @@ rename_tabla = {
     "artist_name": "Artista",
     "scouting_score": "Score",
     "probabilidad_viral": "Prob. Viral 6M",
+    "prob_breakout_6m": "Prob. Breakout 6M",
+    "mes_optimo_firma": "Mes firma",
+    "riesgo": "Riesgo Cox",
     "ar_recommendation": "Recomendación",
     "deezer_fans": "Fans",
     "deezer_rank": "Rank",

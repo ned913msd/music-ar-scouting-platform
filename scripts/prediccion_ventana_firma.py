@@ -2,12 +2,15 @@
 Predice la ventana de firma óptima de un artista con el modelo de Cox
 entrenado en scripts/entrenar_modelo_cox.py.
 
-Uso:
+Uso (CLI):
     python scripts/prediccion_ventana_firma.py "Karol G"
     python scripts/prediccion_ventana_firma.py            # por defecto: Karol G
 
 Salida: probabilidad de breakout a 6 meses, mes óptimo de firma, pico de
 riesgo mensual y clasificación de riesgo.
+
+La app (app.py) reutiliza este mismo módulo: `predecir_lote()` devuelve las
+tres columnas para todo el universo en un solo paso vectorizado.
 
 NOTA técnica: lifelines NO implementa predict_hazard() para CoxPH con
 baseline de Breslow (lanza NotImplementedError). El riesgo se deriva aquí
@@ -40,6 +43,19 @@ FEATURES = [
 
 # Rejilla mensual: horizonte de 12 meses (mes 1 = días 0-30, mes 12 = 330-360)
 TIMES = list(range(0, 361, 30))
+MES_BREAKOUT = TIMES.index(180)  # índice de los 180 días = mes 6
+UMBRAL_PICO = 1e-12  # por debajo: el mes pico no existe (riesgo nulo)
+
+
+def cargar_modelo():
+    """Carga models/cox_model.pkl (None si no existe o lifelines no está)."""
+    ruta = os.path.join(REPO_ROOT, "models", "cox_model.pkl")
+    if not os.path.exists(ruta):
+        return None
+    try:
+        return joblib.load(ruta)
+    except Exception:
+        return None
 
 
 def _normalizar(texto):
@@ -48,7 +64,8 @@ def _normalizar(texto):
     return "".join(c for c in texto if not unicodedata.combining(c))
 
 
-def _clasificar_riesgo(prob):
+def clasificar_riesgo(prob):
+    """Umbrales del producto: 6M breakout <10% Bajo · <30% Medio · resto Alto."""
     if prob < 0.10:
         return "Bajo"
     if prob < 0.30:
@@ -56,19 +73,91 @@ def _clasificar_riesgo(prob):
     return "Alto"
 
 
+def curva_supervivencia(cph, X, times=None):
+    """S(t) por sujeto usando el paso de Breslow (sin interpolar).
+
+    lifelines interpola linealmente la curva fuera del rango de eventos, lo
+    que deja S(0) < 1 y distorsiona las probabilidades. Aquí se evalúa el
+    acumulado como función escalonada: H0(t) = H0(último evento <= t).
+    Devuelve un array (sujetos, tiempos).
+    """
+    times = TIMES if times is None else times
+    base = cph.baseline_cumulative_hazard_.iloc[:, 0]
+    idx = base.index.to_numpy(dtype=float)
+    vals = base.to_numpy(dtype=float)
+    pos = np.searchsorted(idx, np.asarray(times, dtype=float), side="right") - 1
+    H0 = np.where(pos >= 0, vals[np.clip(pos, 0, None)], 0.0)
+    ph = cph.predict_partial_hazard(X).to_numpy(dtype=float)
+    return np.exp(-np.outer(ph, H0))
+
+
+def riesgo_mensual(S):
+    """Hazard condicional mensual h_k = 1 - S(t_k)/S(t_k-1) por sujeto."""
+    riesgo = np.zeros_like(S)
+    anterior = np.where(S[:, :-1] > 0, S[:, :-1], np.nan)
+    riesgo[:, 1:] = 1.0 - S[:, 1:] / anterior
+    return np.nan_to_num(riesgo)
+
+
+def predecir_lote(cph, X):
+    """Predice para todo un DataFrame con las columnas FEATURES.
+
+    Devuelve prob_breakout_6m (0-1), mes_optimo_firma (1-12 o NA si no hay
+    riesgo en el año), pico_riesgo_mensual y riesgo. Las filas sin features
+    completas quedan como NaN / '—' en vez de romper el lote.
+    """
+    features = X[FEATURES].astype(float)
+    valido = np.isfinite(features.to_numpy()).all(axis=1)
+
+    prob = np.full(len(features), np.nan)
+    pico = np.full(len(features), np.nan)
+    mes = np.zeros(len(features), dtype=int)
+    riesgo = np.array(["—"] * len(features), dtype=object)
+
+    if valido.any():
+        S = curva_supervivencia(cph, features.loc[valido])
+        h = riesgo_mensual(S)
+        # h[:, k] cubre los días ((k-1)*30, k*30] → el índice ya ES el mes
+        mes_crudo = h.argmax(axis=1)
+        prob_v = 1.0 - S[:, MES_BREAKOUT]
+        pico_v = h[np.arange(len(mes_crudo)), mes_crudo]
+        mes_v = np.where(pico_v > UMBRAL_PICO, mes_crudo, 0)
+
+        prob[valido] = prob_v
+        pico[valido] = pico_v
+        mes[valido] = mes_v
+        riesgo[valido] = [clasificar_riesgo(p) for p in prob_v]
+
+    mes_col = pd.Series(mes, index=features.index, dtype="Int64").replace(0, pd.NA)
+    return pd.DataFrame(
+        {
+            "prob_breakout_6m": prob.round(4),
+            "mes_optimo_firma": mes_col,
+            "pico_riesgo_mensual": pico.round(4),
+            "riesgo": riesgo,
+        },
+        index=features.index,
+    )
+
+
 def predecir_ventana_firma(nombre_artista):
     """Devuelve el dict de predicción para un artista (None si no existe)."""
 
-    model_path = os.path.join(REPO_ROOT, "models", "cox_model.pkl")
     seed_path = os.path.join(
         REPO_ROOT, "ar_dbt_project", "seeds", "deezer_artists_data.csv"
     )
-    for path in (model_path, seed_path):
+    for path in (
+        os.path.join(REPO_ROOT, "models", "cox_model.pkl"),
+        seed_path,
+    ):
         if not os.path.exists(path):
             print(f"❌ Error: no se encontró {path}")
             return None
 
-    cph = joblib.load(model_path)
+    cph = cargar_modelo()
+    if cph is None:
+        print("❌ Error: no se pudo cargar el modelo Cox (¿falta lifelines?).")
+        return None
     df = pd.read_csv(seed_path)
 
     faltantes = [c for c in FEATURES if c not in df.columns]
@@ -90,49 +179,28 @@ def predecir_ventana_firma(nombre_artista):
         [fila[FEATURES].astype(float).tolist()], columns=FEATURES, dtype=float
     )
 
-    # --- Supervivencia --------------------------------------------------
-    # H0 como función escalonada (Breslow) y no con predict_survival_function,
-    # que interpola linealmente fuera del rango de eventos y devuelve
-    # S(0) < 1. Misma fórmula que scripts/entrenar_modelo_cox.py.
-    base = cph.baseline_cumulative_hazard_.iloc[:, 0]
-    idx = base.index.to_numpy(dtype=float)
-    vals = base.to_numpy(dtype=float)
-    pos = np.searchsorted(idx, np.asarray(TIMES, dtype=float), side="right") - 1
-    H0 = np.where(pos >= 0, vals[np.clip(pos, 0, None)], 0.0)
-    ph = float(cph.predict_partial_hazard(features_df).iloc[0])
-    S = np.exp(-H0 * ph)
-
-    # Hazard condicional mensual: h_k = 1 - S(t_k)/S(t_k-1)
-    riesgo_mensual = np.zeros(len(S))
-    riesgo_mensual[1:] = 1.0 - S[1:] / np.where(S[:-1] > 0, S[:-1], np.nan)
-    riesgo_mensual = np.nan_to_num(riesgo_mensual)
-
-    prob_breakout_6m = float(1.0 - S[6])  # S(180 días) = mes 6
-    mes = int(np.argmax(riesgo_mensual))  # índice 1..12
-    pico_riesgo = float(riesgo_mensual[mes])
-    # Sin riesgo dentro de los 12 meses: no hay mes pico que reportar
-    mes_optimo_firma = max(mes, 1) if pico_riesgo > 1e-12 else None
+    pred = predecir_lote(cph, features_df).iloc[0]
+    prob = float(pred["prob_breakout_6m"])
+    pico = float(pred["pico_riesgo_mensual"])
+    mes = None if pd.isna(pred["mes_optimo_firma"]) else int(pred["mes_optimo_firma"])
 
     resultado = {
         "artista": fila["artist_name"],
-        "prob_breakout_6m": round(prob_breakout_6m, 4),
-        "mes_optimo_firma": mes_optimo_firma,
-        "pico_riesgo_mensual": round(pico_riesgo, 4),
-        "riesgo": _clasificar_riesgo(prob_breakout_6m),
+        "prob_breakout_6m": round(prob, 4),
+        "mes_optimo_firma": mes,
+        "pico_riesgo_mensual": round(pico, 4),
+        "riesgo": pred["riesgo"],
         "features": features_df.iloc[0].to_dict(),
     }
 
     print(f"\n🪧 Ventana de firma óptima para {resultado['artista']}")
-    print(f"   ▶ Probabilidad de breakout a 6 meses: {prob_breakout_6m:.2%}")
-    if mes_optimo_firma is None:
+    print(f"   ▶ Probabilidad de breakout a 6 meses: {prob:.2%}")
+    if mes is None:
         print("   ▶ Mes óptimo de firma: sin riesgo dentro de los 12 meses")
         print("   ▶ Pico de riesgo mensual: 0.00%")
     else:
-        print(f"   ▶ Mes óptimo de firma: mes {mes_optimo_firma}")
-        print(
-            f"   ▶ Pico de riesgo mensual: {pico_riesgo:.2%} "
-            f"(mes {mes_optimo_firma})"
-        )
+        print(f"   ▶ Mes óptimo de firma: mes {mes}")
+        print(f"   ▶ Pico de riesgo mensual: {pico:.2%} (mes {mes})")
     print(f"   ▶ Clasificación de riesgo: {resultado['riesgo']}")
     print("   ▶ Features usadas:")
     for k in FEATURES:
