@@ -35,6 +35,13 @@ jobs:
       - name: Ejecutar script de actualización
         run: python scripts/daily_update.py
 
+      # Fase 2 — ADN básico: regenera las features predictoras (X) del modelo
+      # de supervivencia. OJO: daily_update reescribe el seed con SOLO las
+      # columnas núcleo, así que este paso es obligatorio inmediatamente
+      # después (y antes del snapshot, para que el histórico lleve el ADN).
+      - name: 🧬 Extraer ADN Básico (features predictoras)
+        run: python scripts/extraer_adn_basico.py
+
       # Fase 1 — histórico: copia el seed fresco a data/snapshots/ con fecha.
       # Es la materia prima del modelo de supervivencia (time-to-breakout).
       - name: 📊 Guardar snapshot histórico semanal
