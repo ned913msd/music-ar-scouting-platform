@@ -41,3 +41,10 @@ prophet>=1.1
 # Touring geoespacial (Módulo 6): mapa interactivo de la gira simulada
 folium>=0.19
 streamlit-folium>=0.24
+
+# Fase 3 — Modelo de Supervivencia de Cox (ventana de firma óptima)
+# lifelines ajusta el modelo; matplotlib (antes solo implícito vía fpdf2)
+# dibuja la curva de supervivencia. Pin <0.31: el script usa la API
+# `times=` de 0.30 (en versiones previas se llamaba `timeline=`).
+lifelines>=0.30.0,<0.31
+matplotlib>=3.7.0
