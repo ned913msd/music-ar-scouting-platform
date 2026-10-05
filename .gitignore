@@ -35,5 +35,9 @@ dbt_packages/
 *.csv
 !ar_dbt_project/seeds/*.csv
 
+# Fase 1 — histórico versionado: snapshots semanales y tabla de cohorte
+!data/*.csv
+!data/snapshots/*.csv
+
 # dbt telemetría anónima
 .user.yml

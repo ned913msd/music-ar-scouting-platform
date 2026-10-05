@@ -1,0 +1,157 @@
+artist_id,artist_name,start_date,event_date,event_type,censored,genero,pais_origen
+1,KAROL G,2024-01-01,2023-06-15,breakout,0,urbano,Colombia
+2,Legião Urbana,2024-01-01,,breakout,1,urbano,Desconocido
+3,Marc Anthony,2024-01-01,,breakout,1,salsa,Desconocido
+4,Myke Towers,2024-01-01,2023-03-10,breakout,0,urbano,Puerto Rico
+5,Bizarrap,2024-01-01,2023-01-20,breakout,0,urbano,Argentina
+6,Feid,2024-01-01,2023-09-20,breakout,0,urbano,Colombia
+7,Peso Pluma,2024-01-01,2023-04-15,breakout,0,urbano,México
+8,Keith Urban,2024-01-01,,breakout,1,urbano,Desconocido
+9,Ryan Castro,2024-01-01,,breakout,1,urbano,Colombia
+10,Quevedo,2024-01-01,2023-07-10,breakout,0,urbano,España
+11,Mora,2024-01-01,,breakout,1,urbano,Puerto Rico
+12,Sub Urban,2024-01-01,,breakout,1,urbano,Desconocido
+13,Papatinho,2024-01-01,,breakout,1,pop latino,Desconocido
+14,Electric Callboy,2024-01-01,,breakout,1,electrónica,Desconocido
+15,TrapLaudo,2024-01-01,,breakout,1,trap latino,Desconocido
+16,Reggaeton Total,2024-01-01,,breakout,1,reggaeton,Desconocido
+17,Young Miko,2024-01-01,,breakout,1,urbano,Puerto Rico
+18,Hindi Zahra,2024-01-01,,breakout,1,indie,Desconocido
+19,India.Arie,2024-01-01,,breakout,1,indie,Desconocido
+20,SAIKO,2024-01-01,,breakout,1,urbano,Perú
+21,Reggaeton,2024-01-01,,breakout,1,reggaeton,Desconocido
+22,Reggaetones,2024-01-01,,breakout,1,reggaeton,Desconocido
+23,Trap Nation,2024-01-01,,breakout,1,trap latino,Desconocido
+24,Electronica,2024-01-01,,breakout,1,electrónica,Desconocido
+25,Tokyo Police Club,2024-01-01,,breakout,1,indie,Desconocido
+26,Salsa Mix,2024-01-01,,breakout,1,salsa,Desconocido
+27,Salsa,2024-01-01,,breakout,1,salsa,Desconocido
+28,Reggaeton Latino,2024-01-01,,breakout,1,reggaeton,Desconocido
+29,Volker Bertelmann,2024-01-01,,breakout,1,folk,Desconocido
+30,Volkoder,2024-01-01,,breakout,1,folk,Desconocido
+31,Maykel Blanco Y Su Salsa Mayor,2024-01-01,,breakout,1,salsa,Desconocido
+32,Salsa Clásica,2024-01-01,,breakout,1,salsa,Desconocido
+33,Indira Paganotto,2024-01-01,,breakout,1,indie,Desconocido
+34,You Salsa,2024-01-01,,breakout,1,salsa,Desconocido
+35,La Mejor Música Electrónica,2024-01-01,,breakout,1,electrónica,Desconocido
+36,Salsa Picante,2024-01-01,,breakout,1,salsa,Desconocido
+37,Trap Nation (US),2024-01-01,,breakout,1,trap latino,Desconocido
+38,Salsa Celtica,2024-01-01,,breakout,1,salsa,Desconocido
+39,Agrupación Reggaeton,2024-01-01,,breakout,1,reggaeton,Desconocido
+40,Urban & 4,2024-01-01,,breakout,1,urbano,Desconocido
+41,Indie Space,2024-01-01,,breakout,1,indie,Desconocido
+42,folkshilfe,2024-01-01,,breakout,1,folk,Desconocido
+43,Jerry Folk,2024-01-01,,breakout,1,folk,Desconocido
+44,Salsa Kids,2024-01-01,,breakout,1,salsa,Desconocido
+45,Reggaeton Man Flow,2024-01-01,,breakout,1,reggaeton,Desconocido
+46,Urban Love,2024-01-01,,breakout,1,urbano,Desconocido
+47,Urban Life Worship,2024-01-01,,breakout,1,urbano,Desconocido
+48,Workout Electronica,2024-01-01,,breakout,1,electrónica,Desconocido
+49,indie tribe,2024-01-01,,breakout,1,indie,Desconocido
+50,El Inspector de la Salsa,2024-01-01,,breakout,1,salsa,Desconocido
+51,Sally Folk,2024-01-01,,breakout,1,folk,Desconocido
+52,Folkeklubben,2024-01-01,,breakout,1,folk,Desconocido
+53,Hermano,2024-01-01,,breakout,1,urbano,Desconocido
+54,Folk Bitch Trio,2024-01-01,,breakout,1,folk,Desconocido
+55,Folknery,2024-01-01,,breakout,1,folk,Desconocido
+56,Indiens d Amerique pour Relaxation et Méditation,2024-01-01,,breakout,1,indie,Desconocido
+57,La República Rock Latino,2024-01-01,,breakout,1,rock latino,Desconocido
+58,Génération Reggaeton,2024-01-01,,breakout,1,reggaeton,Desconocido
+59,LoFi & Chill Electronica,2024-01-01,,breakout,1,electrónica,Desconocido
+60,Salsa & Merengue,2024-01-01,,breakout,1,salsa,Desconocido
+61,Rocazino,2024-01-01,,breakout,1,rock latino,Desconocido
+62,Open Road Folk Music,2024-01-01,,breakout,1,folk,Desconocido
+63,Volker Kutscher,2024-01-01,,breakout,1,folk,Desconocido
+64,Reggaeton Club,2024-01-01,,breakout,1,reggaeton,Desconocido
+65,Reggaeton & Hip Hop Instrumentals Pistas,2024-01-01,,breakout,1,reggaeton,Desconocido
+66,Salsa Baul,2024-01-01,,breakout,1,salsa,Desconocido
+67,Banda Reggaeton,2024-01-01,,breakout,1,reggaeton,Desconocido
+68,Folk Road Show,2024-01-01,,breakout,1,folk,Desconocido
+69,Electronicat,2024-01-01,,breakout,1,electrónica,Desconocido
+70,Reggaeton G.,2024-01-01,,breakout,1,reggaeton,Desconocido
+71,Reggaeton Band,2024-01-01,,breakout,1,reggaeton,Desconocido
+72,Sergio George's Salsa Giants,2024-01-01,,breakout,1,salsa,Desconocido
+73,Georgian Folk,2024-01-01,,breakout,1,folk,Desconocido
+74,Reggaeton Acústico,2024-01-01,,breakout,1,reggaeton,Desconocido
+75,Population II,2024-01-01,,breakout,1,pop latino,Desconocido
+76,Electronica House Beat,2024-01-01,,breakout,1,electrónica,Desconocido
+77,Latin Pop Heroes,2024-01-01,,breakout,1,pop latino,Desconocido
+78,Gunda Merced Y Su Salsa Fever,2024-01-01,,breakout,1,salsa,Desconocido
+79,Urbano,2024-01-01,,breakout,1,urbano,Desconocido
+80,Luifer de la Salsa,2024-01-01,,breakout,1,salsa,Desconocido
+81,Musica Electronica Dance,2024-01-01,,breakout,1,electrónica,Desconocido
+82,Fanfara Electronica,2024-01-01,,breakout,1,electrónica,Desconocido
+83,Folk,2024-01-01,,breakout,1,folk,Desconocido
+84,The Folks,2024-01-01,,breakout,1,folk,Desconocido
+85,Pop Latino,2024-01-01,,breakout,1,pop latino,Desconocido
+86,Baila Electronica,2024-01-01,,breakout,1,electrónica,Desconocido
+87,Palatino,2024-01-01,,breakout,1,pop latino,Desconocido
+88,Rock Nation,2024-01-01,,breakout,1,rock latino,Desconocido
+89,Population 1,2024-01-01,,breakout,1,pop latino,Desconocido
+90,Indie Rock Hits,2024-01-01,,breakout,1,indie,Desconocido
+91,Kings of the Reggaeton,2024-01-01,,breakout,1,reggaeton,Desconocido
+92,Indie Anthony,2024-01-01,,breakout,1,indie,Desconocido
+93,Velvet Salsa All Stars,2024-01-01,,breakout,1,salsa,Desconocido
+94,Musica Electronica Para Entrenar,2024-01-01,,breakout,1,electrónica,Desconocido
+95,E.T.O. (Electronica Techno Orchestra),2024-01-01,,breakout,1,electrónica,Desconocido
+96,Kali,2024-01-01,,breakout,1,indie,Desconocido
+97,De Electronica's,2024-01-01,,breakout,1,electrónica,Desconocido
+98,Trap House Latino,2024-01-01,,breakout,1,trap latino,Desconocido
+99,Salsa Camará Instrumental,2024-01-01,,breakout,1,salsa,Desconocido
+100,Folk & Røvere,2024-01-01,,breakout,1,folk,Desconocido
+101,Rock Latino,2024-01-01,,breakout,1,rock latino,Desconocido
+102,D.J. Reggaeton,2024-01-01,,breakout,1,reggaeton,Desconocido
+103,Salsa Power Band,2024-01-01,,breakout,1,salsa,Desconocido
+104,Musica Electronica Nueva,2024-01-01,,breakout,1,electrónica,Desconocido
+105,Pop Latino Crew,2024-01-01,,breakout,1,pop latino,Desconocido
+106,Dj Electronica,2024-01-01,,breakout,1,electrónica,Desconocido
+107,Trio Latino,2024-01-01,,breakout,1,trap latino,Desconocido
+108,Urbano Prodigy,2024-01-01,,breakout,1,urbano,Desconocido
+109,The Kings of Reggaeton,2024-01-01,,breakout,1,reggaeton,Desconocido
+110,Urbano de Castro,2024-01-01,,breakout,1,urbano,Desconocido
+111,Indie Allen,2024-01-01,,breakout,1,indie,Desconocido
+112,PERREO REGGAETON MX,2024-01-01,,breakout,1,reggaeton,Desconocido
+113,Allen Folk,2024-01-01,,breakout,1,folk,Desconocido
+114,Salsa 2000,2024-01-01,,breakout,1,salsa,Desconocido
+115,Indie Elephant,2024-01-01,,breakout,1,indie,Desconocido
+116,Indie,2024-01-01,,breakout,1,indie,Desconocido
+117,The Electronica's,2024-01-01,,breakout,1,electrónica,Desconocido
+118,Folk & Rackare,2024-01-01,,breakout,1,folk,Desconocido
+119,Urbano Arroyo,2024-01-01,,breakout,1,urbano,Desconocido
+120,Urbano Band,2024-01-01,,breakout,1,urbano,Desconocido
+121,Tres Latino,2024-01-01,,breakout,1,trap latino,Desconocido
+122,Jaquarious indie,2024-01-01,,breakout,1,indie,Desconocido
+123,Platinò,2024-01-01,,breakout,1,pop latino,Desconocido
+124,Electronica D. Foundation,2024-01-01,,breakout,1,electrónica,Desconocido
+125,Pop Latin Urban Boys,2024-01-01,,breakout,1,pop latino,Desconocido
+126,Trap Nation (UK),2024-01-01,,breakout,1,trap latino,Desconocido
+127,Urbano Moraes,2024-01-01,,breakout,1,urbano,Desconocido
+128,La Banda Pop Latina,2024-01-01,,breakout,1,pop latino,Desconocido
+129,Urban O,2024-01-01,,breakout,1,urbano,Desconocido
+130,THIS IS REGGAETON,2024-01-01,,breakout,1,reggaeton,Desconocido
+131,Hackney Electronica,2024-01-01,,breakout,1,electrónica,Desconocido
+132,-Urbano-,2024-01-01,,breakout,1,urbano,Desconocido
+133,Marimba Orquesta Sonora Latina De Miguel Rocche,2024-01-01,,breakout,1,rock latino,Desconocido
+134,Urbano Eletroacustico,2024-01-01,,breakout,1,urbano,Desconocido
+135,Electronica Nacional,2024-01-01,,breakout,1,electrónica,Desconocido
+136,Urbano Medeiros,2024-01-01,,breakout,1,urbano,Desconocido
+137,INDIE CINDY,2024-01-01,,breakout,1,indie,Desconocido
+138,"Franksen, C-Rock, Ben Nook, Peter Latino",2024-01-01,,breakout,1,rock latino,Desconocido
+139,Team Latino,2024-01-01,,breakout,1,trap latino,Desconocido
+140,Reggaeton Sensual,2024-01-01,,breakout,1,reggaeton,Desconocido
+141,The Salsa Lounge,2024-01-01,,breakout,1,salsa,Desconocido
+142,Urbano All Stars,2024-01-01,,breakout,1,urbano,Desconocido
+143,Urbano Europe,2024-01-01,,breakout,1,urbano,Desconocido
+144,La Quinta Rock Latino Ec,2024-01-01,,breakout,1,rock latino,Desconocido
+145,Indie Indie,2024-01-01,,breakout,1,indie,Desconocido
+146,Ethno Electronica,2024-01-01,,breakout,1,electrónica,Desconocido
+147,OurVinyl | Folk,2024-01-01,,breakout,1,folk,Desconocido
+148,Slavic Folk,2024-01-01,,breakout,1,folk,Desconocido
+149,LIRICAS DEL REGGAETON,2024-01-01,,breakout,1,reggaeton,Desconocido
+150,TRAP LATINO,2024-01-01,,breakout,1,trap latino,Desconocido
+151,Re:Covered Indie,2024-01-01,,breakout,1,indie,Desconocido
+152,Frecuencia Latina Por siempre,2024-01-01,,breakout,1,pop latino,Desconocido
+153,Pacifistes Rock latino System,2024-01-01,,breakout,1,rock latino,Desconocido
+154,Kritical Trap Latino,2024-01-01,,breakout,1,trap latino,Desconocido
+155,Latino Pop,2024-01-01,,breakout,1,pop latino,Desconocido
+156,the hyper folk,2024-01-01,,breakout,1,folk,Desconocido

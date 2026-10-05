@@ -35,6 +35,11 @@ jobs:
       - name: Ejecutar script de actualización
         run: python scripts/daily_update.py
 
+      # Fase 1 — histórico: copia el seed fresco a data/snapshots/ con fecha.
+      # Es la materia prima del modelo de supervivencia (time-to-breakout).
+      - name: 📊 Guardar snapshot histórico semanal
+        run: python scripts/guardar_snapshot.py
+
       # Alertas proactivas: repasa el seed fresco y notifica por Telegram los
       # artistas en FIRMAR AHORA (misma fórmula que el mart de dbt). Los
       # credenciales viven SOLO como Secrets del repo (Settings → Secrets and
@@ -47,6 +52,14 @@ jobs:
           # el seed): activa el delta de fans en el mensaje.
           TELEGRAM_INCLUIR_DELTA: '1'
         run: python scripts/send_ar_alerts.py
+
+      - name: 📊 Commit de snapshots históricos
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add data/
+          git diff --quiet && git diff --staged --quiet || git commit -m "📊 Snapshot histórico semanal - $(date +%Y-%m-%d)"
+          git push
 
       - name: Guardar cambios en GitHub
         run: |
