@@ -580,6 +580,39 @@ def display_kpi_grid(kpis):
     )
 
 
+# Fase 4 — etiquetas de acción sobre la misma columna `riesgo` del perfil y
+# la tabla (Alto >30%, Medio >10%, Bajo el resto en prob. de breakout a 6M).
+ACCION_RIESGO = {
+    "Alto": ("🔥 FIRMA INMEDIATA", "#FF4444"),
+    "Medio": ("👀 OBSERVAR DE CERCA", "#FFA500"),
+    "Bajo": ("⏳ ESPERAR MÁS DATOS", "#6B7280"),
+}
+
+
+def ventana_firma_cox_html(row):
+    """Badge de acción + ventana de firma para las cards (Fase 4).
+
+    Vacío si la columna `riesgo` no existe (Cox no desplegado): la card queda
+    exactamente como antes, sin romper el render."""
+    etiqueta, color = ACCION_RIESGO.get(row.get("riesgo", "—"), (None, None))
+    if etiqueta is None:
+        return ""
+    mes = row.get("mes_optimo_firma")
+    if pd.isna(mes):
+        ventana = "Ventana: riesgo &lt;10% los 12 meses"
+    else:
+        ventana = (
+            f'Ventana óptima: <strong style="color:#00CED1;">Mes {int(mes)}</strong>'
+        )
+    return (
+        f'<span class="badge-pulse" style="background-color: {color}; color: #fff; '
+        'padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; '
+        'display: inline-block; margin: 6px 0 4px;">'
+        f"{etiqueta}</span>"
+        f'<p style="margin: 0 0 6px; font-size: 0.8rem; color: #94a3b8;">{ventana}</p>'
+    )
+
+
 def artist_card_html(row, photo_data_uri=None, index=0):
     """Card de artista glassmórfica (hero). Conserva las features del tablero
     anterior que el HTML plano del tutorial descartaba: Probabilidad de
@@ -600,6 +633,7 @@ def artist_card_html(row, photo_data_uri=None, index=0):
         badge_color_for(row["ar_recommendation"]),
         inline=True,
     )
+    cox_html = ventana_firma_cox_html(row)
     # Stagger real por card: el delay va inline (nth-child no funciona entre
     # st.markdown separados: cada card es hija única de su wrapper en el DOM)
     return f"""
@@ -609,6 +643,7 @@ def artist_card_html(row, photo_data_uri=None, index=0):
             <div>
                 <h3 class="artist-name">{row['artist_name']}</h3>
                 <p class="artist-meta">{badge} | Score: <strong class="score-value">{row['scouting_score']:.0f}/100</strong></p>
+                {cox_html}
                 <p class="artist-track">🎵 Top Track: {row['top_track_name']}</p>
                 <div class="insight-pill"><span>💡 {row['strategic_insight']}</span></div>
             </div>
@@ -644,6 +679,7 @@ def artist_card_compacto_html(row, index=0):
         badge_color_for(row["ar_recommendation"]),
         inline=True,
     )
+    cox_html = ventana_firma_cox_html(row)
     return f"""
     <div class="neumorphic-card artist-card" style="animation-delay: {index * 0.05:.2f}s; padding: 15px; margin-bottom: 15px;">
         <div style="display: flex; gap: 14px; align-items: center;">
@@ -657,6 +693,7 @@ def artist_card_compacto_html(row, index=0):
                     Score: <strong class="score-value">{row['scouting_score']:.0f}/100</strong> · 🎧 {fans} fans
                 </p>
                 <div style="margin-top: 6px;">{badge}</div>
+                {cox_html}
             </div>
         </div>
     </div>
