@@ -1151,15 +1151,14 @@ def mostrar_perfil_artista(artist_name):
             unsafe_allow_html=True,  # el badge inline llega como HTML
         )
         if pd.notna(artista.get("prob_breakout_6m")):
-            mes_cox = (
-                "sin riesgo en 12M"
-                if pd.isna(artista.get("mes_optimo_firma"))
-                else f"mes {int(artista['mes_optimo_firma'])}"
-            )
+            if pd.isna(artista.get("mes_optimo_firma")):
+                ventana_cox = "riesgo <10% los 12 meses"
+            else:
+                ventana_cox = f"firmar antes del mes {int(artista['mes_optimo_firma'])}"
             st.markdown(
                 f"🪧 **Cox:** Prob. breakout 6M **"
-                f"{artista['prob_breakout_6m']:.1f}%** · Mes óptimo de firma: "
-                f"**{mes_cox}** · Riesgo: **{artista.get('riesgo', '—')}**"
+                f"{artista['prob_breakout_6m']:.1f}%** · Ventana: "
+                f"**{ventana_cox}** · Riesgo: **{artista.get('riesgo', '—')}**"
             )
         st.markdown(
             f"🎧 **{int(artista['deezer_fans']):,}** fans · Rank: "
@@ -1871,8 +1870,15 @@ rename_tabla = {
 if "genero" in df_filtered.columns:
     columnas_tabla.insert(1, "genero")
     rename_tabla["genero"] = "Género"
+tabla_cox = df_filtered[columnas_tabla].copy()
+# Sin ventana de firma (riesgo <10% todo el año): en blanco no se distingue
+# de un fallo de cálculo, así que se muestra el guion explícito
+if "mes_optimo_firma" in tabla_cox.columns:
+    tabla_cox["mes_optimo_firma"] = (
+        tabla_cox["mes_optimo_firma"].astype("string").fillna("—")
+    )
 st.dataframe(
-    df_filtered[columnas_tabla].rename(columns=rename_tabla),
+    tabla_cox.rename(columns=rename_tabla),
     use_container_width=True,
     hide_index=True,
 )

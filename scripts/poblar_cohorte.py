@@ -59,10 +59,7 @@ def poblar_cohorte_inicial():
         "saiko": "Perú",
     }
 
-    # Fecha de inicio de observación
-    start_date = "2024-01-01"
-
-    # Crear tabla de cohorte
+    # Crear tabla de cohorte (start_date se calcula después, ver abajo)
     cohort_data = []
 
     for idx, row in df.iterrows():
@@ -81,7 +78,6 @@ def poblar_cohorte_inicial():
             {
                 "artist_id": idx + 1,
                 "artist_name": artist_name,
-                "start_date": start_date,
                 "event_date": event_date,
                 "event_type": "breakout",
                 "censored": censored,
@@ -90,13 +86,27 @@ def poblar_cohorte_inicial():
             }
         )
 
-    # Crear DataFrame y guardar
+    # Fecha de inicio de observación: PRIMER DÍA DEL AÑO del evento más
+    # antiguo que cae dentro de esta cohorte. Un start_date posterior al
+    # evento deja duraciones negativas, inválidas para el modelo de Cox
+    # (antes era el placeholder "2024-01-01" y los 6 eventos son de 2023).
+    # Solo se miran los artistas que existen en el seed: los del diccionario
+    # que no están (Bad Bunny, Shakira…) no entran a la cohorte.
+    eventos = [r["event_date"] for r in cohort_data if r["event_date"]]
+    if eventos:
+        fecha_min = min(pd.to_datetime(eventos))
+        start_date = fecha_min.replace(month=1, day=1)
+    else:
+        start_date = pd.Timestamp.today().replace(month=1, day=1)
+
     cohort_df = pd.DataFrame(cohort_data)
+    cohort_df.insert(2, "start_date", start_date.strftime("%Y-%m-%d"))
     cohort_path = os.path.join(REPO_ROOT, "data", "cohort_table.csv")
     os.makedirs(os.path.dirname(cohort_path), exist_ok=True)
     cohort_df.to_csv(cohort_path, index=False)
 
     print(f"✅ Cohorte inicial creada: {cohort_path}")
+    print(f"🗓  Inicio de observación: {start_date.date()}")
     print(f"📊 Total de artistas: {len(cohort_df)}")
     print(
         f"Artistas con breakout: {len(cohort_df[cohort_df['censored'] == 0])}"
