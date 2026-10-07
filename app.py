@@ -1,4 +1,5 @@
 import base64
+import json
 import math
 
 import streamlit as st
@@ -24,8 +25,186 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Tema visual (oscuro por defecto). Se guarda en data/preferencias.json para
+# que sobreviva a un reload de página: session_state NO sobrevive a reload.
+_RUTA_PREFERENCIAS = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "data", "preferencias.json"
+)
 
-def load_custom_css():
+
+def leer_tema():
+    try:
+        with open(_RUTA_PREFERENCIAS, encoding="utf-8") as f:
+            tema = json.load(f).get("tema", "oscuro")
+        return "claro" if tema == "claro" else "oscuro"
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return "oscuro"
+
+
+def guardar_tema(tema):
+    try:
+        with open(_RUTA_PREFERENCIAS, "w", encoding="utf-8") as f:
+            json.dump({"tema": tema}, f, ensure_ascii=False, indent=2)
+    except OSError:
+        pass
+
+
+# Inyecta DESPUÉS del CSS base (misma especificidad → gana el cascada):
+# sólo se emite cuando el usuario elige modo claro.
+_CSS_CLARO = """
+    /* ==========================================
+       TEMA CLARO (A&R Scouting)
+       ========================================== */
+    :root {
+        --background-color: #f5f7fb !important;
+        --secondary-background-color: #ffffff !important;
+        --text-color: #10142a !important;
+        --primary-color: #0066FF !important;
+        --arrow-data-text-color: #10142a;
+        --arrow-header-text-color: #10142a;
+        --arrow-header-bgcolor: #f0f2f6;
+        --arrow-border-color: rgba(15, 23, 42, 0.12);
+    }
+
+    .stApp {
+        background: linear-gradient(135deg, #f5f7fb 0%, #eef1f8 50%, #f7f9fc 100%) !important;
+        background-size: 100% 100% !important;
+        color: #10142a !important;
+        animation: none !important;
+    }
+
+    [data-testid="stSidebar"] {
+        background: #ffffff !important;
+        color: #10142a !important;
+    }
+    [data-testid="stHeader"] { background: transparent !important; }
+
+    /* Widgets que el CSS base tiñe a mano */
+    [data-testid="stSidebar"] [data-testid="stMultiSelect"] input { color: #10142a !important; }
+    [data-testid="stSidebar"] [data-testid="stSlider"] { color: #475569 !important; }
+
+    /* Cards: cristal claro sobre página clara */
+    .glass-card,
+    .neumorphic-card {
+        background: rgba(255, 255, 255, 0.88) !important;
+        border: 1px solid rgba(15, 23, 42, 0.12) !important;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.10) !important;
+        color: #10142a !important;
+    }
+    .glass-card:hover,
+    .neumorphic-card:hover {
+        border-color: rgba(0, 102, 255, 0.55) !important;
+        box-shadow: 0 10px 30px rgba(0, 102, 255, 0.16) !important;
+    }
+
+    .artist-name { color: #0f172a !important; }
+    .artist-meta { color: #475569 !important; }
+    .artist-track { color: #334155 !important; }
+    .insight-pill { background: rgba(0, 102, 255, 0.10) !important; }
+    .insight-pill span { color: #1d4ed8 !important; }
+    .stat-label { color: #64748b !important; }
+    .stat-value-dark { color: #0f172a !important; }
+    .viral-track { background: #e2e8f0 !important; }
+    .deezer-link { color: #0066FF !important; }
+    .artist-photo { box-shadow: 0 6px 18px rgba(15, 23, 42, 0.25) !important; }
+
+    /* KPIs: ficha clara, cifra con contraste */
+    .kpi-card {
+        background: linear-gradient(145deg, rgba(0, 102, 255, 0.08), rgba(0, 150, 136, 0.08)) !important;
+        border: 1px solid rgba(0, 102, 255, 0.28) !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+    .kpi-value {
+        background: linear-gradient(135deg, #0052cc, #00838f) !important;
+        -webkit-background-clip: text !important;
+        background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+    }
+    .kpi-label { color: #475569 !important; }
+
+    /* Cargadores y barras */
+    .loading-spinner p { color: #475569 !important; }
+    .spinner {
+        border: 4px solid #dbe3ef !important;
+        border-top-color: #0066FF !important;
+        box-shadow: none !important;
+    }
+    .skeleton,
+    .skeleton-circle {
+        background: linear-gradient(90deg, #e9edf5 25%, #f4f6fb 50%, #e9edf5 75%) !important;
+        background-size: 200% 100% !important;
+    }
+    .progress-bar-container {
+        background: #e9edf5 !important;
+        box-shadow: inset 2px 2px 4px rgba(15, 23, 42, 0.12) !important;
+    }
+
+    /* Avisos de Streamlit (info/warning/error) legibles */
+    [data-testid="stAlert"] {
+        background: rgba(255, 255, 255, 0.92) !important;
+        border: 1px solid rgba(15, 23, 42, 0.12) !important;
+        color: #10142a !important;
+    }
+
+    /* Texto heredado: el CSS base tiñe labels/markdown con slate claro,
+       ilegible sobre página clara */
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stSidebar"] p,
+    [data-testid="stWidgetLabel"] p,
+    [data-testid="stRadio"] label,
+    [data-testid="stRadio"] span,
+    [data-testid="stCheckbox"] label,
+    [data-testid="stToggle"] label,
+    [data-testid="stExpander"] summary,
+    [data-testid="stExpander"] summary * {
+        color: #334155 !important;
+    }
+
+    /* Cabecera de expander: el base la deja azul noche */
+    [data-testid="stExpander"] summary,
+    [data-testid="stExpander"] summary * {
+        background: #ffffff !important;
+    }
+    [data-testid="stExpander"] details > summary {
+        border-bottom: 1px solid rgba(15, 23, 42, 0.10) !important;
+    }
+
+    /* Cajas de entrada: fondo blanco, tinta oscura */
+    .stTextInput > div > div,
+    [data-testid="stTextInput"] div,
+    [data-testid="stMultiSelect"] div,
+    .stSelectbox > div > div > select {
+        background: #ffffff !important;
+        border-color: rgba(15, 23, 42, 0.18) !important;
+    }
+    .stTextInput > div > div > input,
+    [data-testid="stTextInput"] input,
+    [data-testid="stMultiSelect"] input,
+    .stSelectbox > div > div > select {
+        background: #ffffff !important;
+        color: #10142a !important;
+    }
+
+    /* Sin resplandor neón en títulos (sobre fondo claro ensucia) */
+    h1, h2, h3 {
+        text-shadow: none !important;
+    }
+    /* Streamlit envuelve el texto del título en un span con su propio
+       color (slate-300): ilegible sobre página clara */
+    h1 span[data-heading-text],
+    h2 span[data-heading-text],
+    h3 span[data-heading-text],
+    h4 span[data-heading-text] {
+        color: #10142a !important;
+    }
+
+    /* Scrollbar discreto */
+    ::-webkit-scrollbar-track { background: #eef1f6 !important; }
+"""
+
+
+def load_custom_css(tema="oscuro"):
     """CYBERPUNK ENTERPRISE THEME: plataforma SaaS oscura tipo Bloomberg
     Terminal / Spotify for Artists. Glassmorphism (cristal esmerilado) en
     cards y KPIs, acentos neón azul→púrpura→cian, tipografía Inter +
@@ -563,6 +742,8 @@ def load_custom_css():
     }
     </style>
     """
+    if tema == "claro":
+        custom_css = custom_css.replace("</style>", _CSS_CLARO + "\n    </style>")
     st.markdown(custom_css, unsafe_allow_html=True)
 
 
@@ -634,6 +815,9 @@ def artist_card_html(row, photo_data_uri=None, index=0):
         inline=True,
     )
     cox_html = ventana_firma_cox_html(row)
+    estrella = (
+        " ⭐" if row["artist_name"] in st.session_state.get("favoritos", []) else ""
+    )
     # Stagger real por card: el delay va inline (nth-child no funciona entre
     # st.markdown separados: cada card es hija única de su wrapper en el DOM)
     return f"""
@@ -641,7 +825,7 @@ def artist_card_html(row, photo_data_uri=None, index=0):
         <div style="display: grid; grid-template-columns: 100px 1fr 220px; gap: 20px; align-items: center;">
             <div>{photo}</div>
             <div>
-                <h3 class="artist-name">{row['artist_name']}</h3>
+                <h3 class="artist-name">{row['artist_name']}{estrella}</h3>
                 <p class="artist-meta">{badge} | Score: <strong class="score-value">{row['scouting_score']:.0f}/100</strong></p>
                 {cox_html}
                 <p class="artist-track">🎵 Top Track: {row['top_track_name']}</p>
@@ -680,6 +864,9 @@ def artist_card_compacto_html(row, index=0):
         inline=True,
     )
     cox_html = ventana_firma_cox_html(row)
+    estrella = (
+        " ⭐" if row["artist_name"] in st.session_state.get("favoritos", []) else ""
+    )
     return f"""
     <div class="neumorphic-card artist-card" style="animation-delay: {index * 0.05:.2f}s; padding: 15px; margin-bottom: 15px;">
         <div style="display: flex; gap: 14px; align-items: center;">
@@ -688,7 +875,7 @@ def artist_card_compacto_html(row, index=0):
                  style="width: 56px; height: 56px; border-radius: 12px; object-fit: cover; flex-shrink: 0;"
                  alt="{row['artist_name']}">
             <div style="flex: 1; min-width: 0;">
-                <h4 class="artist-name" style="font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{row['artist_name']}</h4>
+                <h4 class="artist-name" style="font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{row['artist_name']}{estrella}</h4>
                 <p class="artist-meta" style="margin: 4px 0 0;">
                     Score: <strong class="score-value">{row['scouting_score']:.0f}/100</strong> · 🎧 {fans} fans
                 </p>
@@ -795,34 +982,90 @@ PALETA_RECOMENDACION = {
 
 
 def estilo_plotly(fig, alto=360, leyenda=False):
-    """Fondo transparente + tipografía clara: el gráfico flota sobre el
-    glassmorphism sin caja blanca (look Bloomberg/Spotify for Artists)."""
+    """Fondo transparente + tipografía legible: el gráfico flota sobre el
+    glassmorphism sin caja blanca. Los colores siguen el tema activo
+    (oscuro por defecto, claro si el usuario lo eligió)."""
+    claro = TEMA_APP == "claro"
+    color_texto = "#334155" if claro else "#cbd5e1"
+    color_titulo = "#0f172a" if claro else "#e2e8f0"
+    color_tick = "#64748b" if claro else "#94a3b8"
+    grid = "rgba(15,23,42,0.08)" if claro else "rgba(255,255,255,0.06)"
+    cero = "rgba(15,23,42,0.18)" if claro else "rgba(255,255,255,0.12)"
+    eje = "rgba(15,23,42,0.25)" if claro else "rgba(255,255,255,0.15)"
     fig.update_layout(
         height=alto,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter, 'Segoe UI', sans-serif", size=12, color="#cbd5e1"),
-        title=dict(font=dict(size=15, color="#e2e8f0"), x=0.01, xanchor="left"),
+        font=dict(family="Inter, 'Segoe UI', sans-serif", size=12, color=color_texto),
+        title=dict(font=dict(size=15, color=color_titulo), x=0.01, xanchor="left"),
         margin=dict(l=10, r=10, t=46, b=10),
         showlegend=leyenda,
         legend=dict(font=dict(size=11), bgcolor="rgba(0,0,0,0)"),
     )
     fig.update_xaxes(
-        gridcolor="rgba(255,255,255,0.06)",
-        zerolinecolor="rgba(255,255,255,0.12)",
-        linecolor="rgba(255,255,255,0.15)",
-        tickfont=dict(color="#94a3b8"),
+        gridcolor=grid,
+        zerolinecolor=cero,
+        linecolor=eje,
+        tickfont=dict(color=color_tick),
     )
     fig.update_yaxes(
-        gridcolor="rgba(255,255,255,0.06)",
-        zerolinecolor="rgba(255,255,255,0.12)",
-        linecolor="rgba(255,255,255,0.15)",
-        tickfont=dict(color="#94a3b8"),
+        gridcolor=grid,
+        zerolinecolor=cero,
+        linecolor=eje,
+        tickfont=dict(color=color_tick),
     )
     return fig
 
 
-load_custom_css()
+TEMA_APP = leer_tema()
+load_custom_css(TEMA_APP)
+
+
+# ==========================================
+# FAVORITOS — lista personal del usuario (A&R). Se persiste en
+# data/favoritos.json porque session_state se pierde al recargar la página;
+# en Streamlit Cloud el archivo vive en la instancia (efímero entre deploys).
+# ==========================================
+_RUTA_FAVORITOS = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "data", "favoritos.json"
+)
+
+
+def _leer_favoritos():
+    try:
+        with open(_RUTA_FAVORITOS, encoding="utf-8") as f:
+            datos = json.load(f)
+        return sorted({a for a in datos.get("artistas", []) if isinstance(a, str)})
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return []
+
+
+def guardar_favoritos(lista):
+    try:
+        os.makedirs(os.path.dirname(_RUTA_FAVORITOS), exist_ok=True)
+        with open(_RUTA_FAVORITOS, "w", encoding="utf-8") as f:
+            json.dump({"artistas": sorted(set(lista))}, f, ensure_ascii=False, indent=2)
+    except OSError:
+        pass
+
+
+def alternar_favorito(nombre):
+    """Añade/quita del set de favoritos y escribe a disco. Devuelve True si
+    el artista queda como favorito tras el cambio."""
+    favoritos = list(st.session_state.get("favoritos", []))
+    if nombre in favoritos:
+        favoritos.remove(nombre)
+        es_fav = False
+    else:
+        favoritos.append(nombre)
+        es_fav = True
+    st.session_state["favoritos"] = favoritos
+    guardar_favoritos(favoritos)
+    return es_fav
+
+
+if "favoritos" not in st.session_state:
+    st.session_state["favoritos"] = _leer_favoritos()
 
 # ==========================================
 # AUTENTICACIÓN SaaS: cada sello tiene su propio acceso. config.yaml trae las
@@ -1126,6 +1369,22 @@ vista_tab = st.sidebar.radio(
 )
 st.sidebar.divider()
 
+# ── 2b. TEMA (Prioridad 3): claro/oscuro. La preferencia vive en
+# data/preferencias.json porque session_state se pierde al recargar la
+# página; el callback escribe antes de que la app vuelva a leer el tema.
+def _cb_tema():
+    guardar_tema("claro" if st.session_state.get("toggle_tema") else "oscuro")
+
+
+st.sidebar.toggle(
+    "☀️ Modo claro",
+    value=(TEMA_APP == "claro"),
+    key="toggle_tema",
+    on_change=_cb_tema,
+    help="Alterna el tema visual de la app (Cyberpunk oscuro ↔ claro). "
+    "La elección queda guardada en data/preferencias.json.",
+)
+
 # ── Router de vistas (st.session_state: Streamlit no tiene routing nativo).
 # El radio MANDA: si el usuario cambia de vista mientras está en un perfil,
 # el perfil se cierra limpio. Interactuar DENTRO del perfil no lo cierra
@@ -1233,6 +1492,19 @@ def mostrar_perfil_artista(artist_name):
         )
         st.markdown(f"[🔗 Ver en Deezer]({artista['deezer_link']})")
         st.markdown(f"💡 {artista['strategic_insight']}")
+
+        # Favoritos (Prioridad 2): lista personal del A&R persistida en
+        # data/favoritos.json; la estrella también se pinta en las cards
+        # y sirve de filtro en el sidebar.
+        _es_fav = artista["artist_name"] in st.session_state.get("favoritos", [])
+        if st.button(
+            ("★ Quitar de favoritos" if _es_fav else "⭐ Añadir a favoritos"),
+            key="btn_favorito_"
+            + str(artista["artist_name"]).lower().replace(" ", "_"),
+            use_container_width=True,
+        ):
+            alternar_favorito(artista["artist_name"])
+            st.rerun()
 
     st.divider()
 
@@ -1572,6 +1844,18 @@ def mostrar_perfil_artista(artist_name):
     )
 
 
+# ── DRILL-DOWN (Prioridad 2): la selección de un punto en los gráficos de
+# Scouting abre el perfil de ese artista. El salto se DIFIERE un run: los
+# keys de los gráficos no se pueden limpiar mientras el widget está
+# instanciado en el mismo run (Streamlit lo prohibiría), así que aquí, al
+# arrancar el run siguiente, se borran ANTES de que los gráficos se rendericen.
+_drill = st.session_state.pop("drill_pendiente", None)
+if _drill:
+    for _key_grafico in ("chart_scatter_fans", "chart_top10"):
+        st.session_state.pop(_key_grafico, None)
+    st.session_state.artista_seleccionado = _drill
+    st.session_state.vista_actual = "perfil"
+
 # ROUTER: el perfil se despacha ANTES que las vistas (es un estado
 # transitorio encima de la navegación; cambiar el radio lo cierra)
 if st.session_state.vista_actual == "perfil" and st.session_state.artista_seleccionado:
@@ -1776,6 +2060,26 @@ if vista_tab == "🆚 Comparador":
         if "deezer_fans" in sub.columns:
             resumen.append(f"mayor base de fans: **{sub['deezer_fans'].idxmax()}**")
         st.caption(" · ".join(resumen))
+
+        # Exportar la comparación (Prioridad 2c): mismas métricas que la
+        # ficha, una fila por artista, con fecha para no pisar exportaciones.
+        _cols_export = ["artist_name"] + [
+            c for c, _et, _tp in COLUMNAS_FICHA if c in sub.columns
+        ]
+        csv_comparacion = (
+            sub.reset_index()[_cols_export].to_csv(index=False).encode("utf-8")
+        )
+        st.download_button(
+            label=f"📥 Exportar comparación ({len(sub)} artistas, CSV)",
+            data=csv_comparacion,
+            file_name=(
+                "comparacion_artistas_"
+                + pd.Timestamp.today().strftime("%Y-%m-%d")
+                + ".csv"
+            ),
+            mime="text/csv",
+            key="export_comparacion",
+        )
 
         botones = st.columns(len(sub.index))
         for i, artista in enumerate(sub.index):
@@ -2042,6 +2346,44 @@ if vista_tab == "🔮 Forecasting 6M":
 # VISTA 1: SCOUTING
 # ==========================================
 
+# ── ALERTAS CONFIGURABLES (Prioridad 3): el usuario mueve sus umbrales y la
+# app le avisa al entrar. Se evalúan SIEMPRE sobre el universo completo (`df`)
+# para que la alerta no dependa de los filtros del momento.
+with st.sidebar.expander("🔔 Alertas A&R", expanded=False):
+    alertas_on = st.toggle(
+        "Activar alertas",
+        value=True,
+        key="alertas_activas",
+        help="Escanea el universo completo con tus umbrales y muestra el "
+        "aviso en la cabecera de Scouting.",
+    )
+    alerta_score = st.slider(
+        "Score mínimo", 0, 100, 75, key="alerta_score", help="Scouting Score."
+    )
+    alerta_prob = st.slider(
+        "Prob. Breakout 6M mínima",
+        0,
+        100,
+        40,
+        key="alerta_prob",
+        help="Modelo Cox (probabilidad de cruzar el umbral de breakout a 6 meses).",
+    )
+    alerta_mes = st.slider(
+        "Ventana de firma máxima (meses)",
+        1,
+        12,
+        6,
+        key="alerta_mes",
+        help="Sólo aplica a artistas con ventana de firma (riesgo >10%). "
+        "Un artista sin ventana nunca dispara alerta.",
+    )
+    alerta_favoritos = st.toggle(
+        "Sólo favoritos ⭐",
+        value=False,
+        key="alerta_solo_favoritos",
+        help="Limita las alertas a tu lista de favoritos.",
+    )
+
 # ── 3. FILTROS (el widget del buscador se define arriba del sidebar;
 # aquí solo vive su lógica: búsqueda = comodín, filtros = refinamiento) ──
 if patron:
@@ -2058,6 +2400,7 @@ if patron:
             "del universo."
         )
     df_filtered = df_busqueda
+    _desc_filtros = f'búsqueda "{patron}"'
 else:
     st.sidebar.header("🎛️ Filtros de Búsqueda")
     # Default = TODO el universo: con 151 artistas la paginación y el
@@ -2126,6 +2469,18 @@ else:
             help="Excluye a los artistas cuyo riesgo nunca supera el 10% "
             "durante los 12 meses (sin ventana de firma).",
         )
+        solo_favoritos = st.checkbox(
+            "Solo favoritos ⭐",
+            value=False,
+            key="filtro_favoritos",
+            help="Se añade favoritos desde el perfil del artista. "
+            f"Tienes {len(st.session_state.get('favoritos', []))} favorito(s).",
+        )
+        _favs = st.session_state.get("favoritos", [])
+        if _favs:
+            st.caption(
+                "⭐ " + " · ".join(_favs[:10]) + (" …" if len(_favs) > 10 else "")
+            )
 
     # Filtrar datos
     df_filtered = df[
@@ -2146,10 +2501,73 @@ else:
         ]
     if solo_ventana:
         df_filtered = df_filtered[df_filtered["mes_optimo_firma"].notna()]
+    if solo_favoritos:
+        df_filtered = df_filtered[
+            df_filtered["artist_name"].isin(st.session_state.get("favoritos", []))
+        ]
+
+    # Descripción legible del filtro activo (Prioridad 2): la lleva el
+    # export del CSV y la muestra el sidebar.
+    _partes = []
+    if len(recommendation_filter) < len(df["ar_recommendation"].unique()):
+        _partes.append("recomendación=" + "/".join(recommendation_filter))
+    if min_score:
+        _partes.append(f"score ≥ {min_score}")
+    if generos_sel:
+        _partes.append("género=" + ", ".join(generos_sel))
+    if paises_sel:
+        _partes.append("país=" + ", ".join(paises_sel))
+    if rango_fans[0] > fans_min or rango_fans[1] < tope_fans:
+        _partes.append(f"fans {rango_fans[0]:,}–{rango_fans[1]:,}")
+    if prob_min:
+        _partes.append(f"prob. breakout ≥ {prob_min}%")
+    if solo_ventana:
+        _partes.append("con ventana")
+    if solo_favoritos:
+        _partes.append("favoritos")
+    _desc_filtros = " · ".join(_partes) if _partes else "ninguno (universo completo)"
 
     st.sidebar.caption(
         f"🎛️ **{len(df_filtered)}** de {len(df)} artistas tras los filtros"
+        f" · ⭐ {len(st.session_state.get('favoritos', []))} favoritos"
     )
+
+# ── AVISO DE ALERTAS (Prioridad 3): umbrales configurados en el sidebar,
+# evaluados SIEMPRE sobre el universo completo (los filtros no las apagan).
+# Va ANTES del corte por vacío: si tus filtros dejan 0 filas, las alertas
+# siguen siendo la salida accionable.
+if alertas_on:
+    _mascara_alerta = (
+        (df["scouting_score"] >= alerta_score)
+        & (df["prob_breakout_6m"].fillna(0) >= alerta_prob)
+        & (df["mes_optimo_firma"].fillna(99) <= alerta_mes)
+    )
+    if alerta_favoritos:
+        _mascara_alerta &= df["artist_name"].isin(
+            st.session_state.get("favoritos", [])
+        )
+    alertas = df[_mascara_alerta].sort_values("scouting_score", ascending=False)
+    _resumen_alerta = (
+        f"score ≥ {alerta_score} · prob. breakout ≥ {alerta_prob}% · "
+        f"ventana ≤ mes {alerta_mes}"
+        + (" · sólo favoritos" if alerta_favoritos else "")
+    )
+    if alertas.empty:
+        st.success(f"✅ **Sin alertas**: ningún artista cumple {_resumen_alerta}.")
+    else:
+        _nombres_alerta = ", ".join(alertas.head(6)["artist_name"].tolist())
+        _extra = f" (+{len(alertas) - 6})" if len(alertas) > 6 else ""
+        st.warning(
+            f"🔔 **{len(alertas)} artista(s)** disparan tus alertas "
+            f"({_resumen_alerta}): **{_nombres_alerta}**{_extra}"
+        )
+        _cols_alerta = st.columns(min(3, len(alertas)))
+        for _i, _nombre in enumerate(alertas.head(3)["artist_name"]):
+            with _cols_alerta[_i]:
+                if st.button(f"👤 Ver {_nombre}", key=f"alerta_btn_{_nombre}"):
+                    st.session_state.artista_seleccionado = _nombre
+                    st.session_state.vista_actual = "perfil"
+                    st.rerun()
 
 if df_filtered.empty:
     if patron:
@@ -2278,7 +2696,11 @@ with col_donut:
     )
     fig_donut.update_traces(
         textinfo="percent",
-        marker=dict(line=dict(color="#0a0e27", width=2)),
+        marker=dict(
+            line=dict(
+                color="#ffffff" if TEMA_APP == "claro" else "#0a0e27", width=2
+            )
+        ),
     )
     st.plotly_chart(
         estilo_plotly(fig_donut, leyenda=True),
@@ -2286,6 +2708,44 @@ with col_donut:
         config={"displayModeBar": False},
         key="chart_donut_reco",
     )
+
+# ── Drill-down (Prioridad 2): seleccionar puntos en un gráfico abre el
+# perfil del artista. 1 punto = salto directo; varios = botones de elección.
+def _nombres_desde_seleccion(evento):
+    """Nombres de artista de los puntos seleccionados en un gráfico
+    (customdata primero; fallback al eje Y para las barras del Top 10)."""
+    try:
+        puntos = list(evento.selection.points or [])
+    except Exception:
+        return []
+    universo = set(df["artist_name"])
+    nombres = []
+    for punto in puntos:
+        cd = punto.get("customdata")
+        nombre = None
+        if isinstance(cd, (list, tuple)) and cd:
+            nombre = cd[0]
+        elif isinstance(cd, str):
+            nombre = cd
+        if not isinstance(nombre, str):
+            nombre = punto.get("y") if isinstance(punto.get("y"), str) else punto.get("x")
+        if isinstance(nombre, str) and nombre in universo and nombre not in nombres:
+            nombres.append(nombre)
+    return nombres
+
+
+def _drill_o_botones(nombres):
+    if not nombres:
+        return
+    if len(nombres) == 1:
+        st.session_state["drill_pendiente"] = nombres[0]
+        st.rerun()
+    st.caption("🔎 Varios puntos seleccionados — elige un artista para abrir su perfil:")
+    for nombre in nombres[:8]:
+        if st.button(f"👤 {nombre}", key=f"drill_btn_{nombre}"):
+            st.session_state["drill_pendiente"] = nombre
+            st.rerun()
+
 
 # Top N en barras horizontales (respeta búsqueda y filtros activos)
 top_chart = df_filtered.head(10).iloc[::-1]  # mejor score arriba
@@ -2298,16 +2758,21 @@ fig_top = px.bar(
     color="ar_recommendation",
     color_discrete_map=PALETA_RECOMENDACION,
     text_auto=".0f",
+    custom_data=["artist_name"],
     height=420,
 )
 fig_top.update_traces(textposition="outside", cliponaxis=False)
 fig_top.update_yaxes(title=None)
-st.plotly_chart(
+evento_top = st.plotly_chart(
     estilo_plotly(fig_top, alto=420),
     use_container_width=True,
-    config={"displayModeBar": False},
+    # modebar solo al pasar el ratón: sin él no hay lasso/box (selección
+    # múltiple); con él oculto el click simple en un punto sigue funcionando.
+    config={"displayModeBar": "hover"},
     key="chart_top10",
+    on_select="rerun",
 )
+_drill_o_botones(_nombres_desde_seleccion(evento_top))
 
 col_scatter, col_genero = st.columns(2)
 with col_scatter:
@@ -2318,16 +2783,19 @@ with col_scatter:
         color="ar_recommendation",
         color_discrete_map=PALETA_RECOMENDACION,
         hover_name="artist_name",
+        custom_data=["artist_name"],
         log_x=True,
         title="Score vs Fans (escala log)",
         labels={"deezer_fans": "Fans Deezer (log)", "scouting_score": "Scouting Score"},
     )
-    st.plotly_chart(
+    evento_scatter = st.plotly_chart(
         estilo_plotly(fig_scatter, leyenda=True),
         use_container_width=True,
-        config={"displayModeBar": False},
+        config={"displayModeBar": "hover"},
         key="chart_scatter_fans",
+        on_select="rerun",
     )
+    _drill_o_botones(_nombres_desde_seleccion(evento_scatter))
 
 with col_genero:
     # El género llega del seed expandido (Fase 1); en un warehouse reconstruido
@@ -2444,14 +2912,23 @@ st.dataframe(
     hide_index=True,
 )
 
-# Exportar datos (Vista 1: Scouting)
+# Exportar datos (Vista 1: Scouting) — exporta el FILTRO ACTIVO: respeta
+# búsqueda, filtros y favoritos; el nombre lleva fecha y nº de filas para
+# que dos exportaciones nunca se pisen.
 st.sidebar.divider()
 st.sidebar.subheader("💾 Exportar Datos")
 csv = df_filtered.to_csv(index=False).encode("utf-8")
+st.sidebar.caption(
+    f"Exporta **{len(df_filtered)}** filas · filtro: **{_desc_filtros}**"
+)
 st.sidebar.download_button(
-    label="📥 Descargar CSV",
+    label=f"📥 Descargar CSV ({len(df_filtered)} filas)",
     data=csv,
-    file_name="ar_scouting_deezer_report.csv",
+    file_name=(
+        "ar_scouting_filtrado_"
+        + pd.Timestamp.today().strftime("%Y-%m-%d")
+        + f"_{len(df_filtered)}.csv"
+    ),
     mime="text/csv",
 )
 

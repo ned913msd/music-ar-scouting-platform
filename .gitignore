@@ -41,3 +41,7 @@ dbt_packages/
 
 # dbt telemetría anónima
 .user.yml
+
+# Estado local del usuario (favoritos y tema; la app los regenera en disco)
+data/favoritos.json
+data/preferencias.json
