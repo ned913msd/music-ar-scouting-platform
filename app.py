@@ -1092,7 +1092,7 @@ st.sidebar.divider()
 st.sidebar.header("🗂️ Vistas")
 vista_tab = st.sidebar.radio(
     "Selecciona la vista:",
-    options=["🎯 Scouting", "🔮 Forecasting 6M", "🌍 Touring"],
+    options=["🎯 Scouting", "🔮 Forecasting 6M", "🌍 Touring", "🆚 Comparador"],
     label_visibility="collapsed",
     key="vista_tab",
 )
@@ -1347,6 +1347,219 @@ def mostrar_perfil_artista(artist_name):
 if st.session_state.vista_actual == "perfil" and st.session_state.artista_seleccionado:
     mostrar_perfil_artista(st.session_state.artista_seleccionado)
     st.stop()
+
+# ==========================================
+# VISTA 4: COMPARADOR DE ARTISTAS — laboratorio interactivo
+# Comparativa lado a lado (2-3 artistas): audiencia, scoring ML, prob. de
+# breakout y ventana de firma del Cox. Trabaja sobre el universo COMPLETO
+# (`df`): los filtros de Scouting no aplican a esta vista.
+# ==========================================
+if vista_tab == "🆚 Comparador":
+    from plotly.subplots import make_subplots
+
+    st.subheader("🆚 Comparador de Artistas")
+    st.markdown(
+        "Selecciona **2 o 3 artistas** y compara sus métricas lado a lado: "
+        "audiencia, Scouting Score, probabilidad de viralidad, probabilidad "
+        "de breakout (Cox) y ventana de firma óptima."
+    )
+
+    _orden = df.sort_values("scouting_score", ascending=False)["artist_name"].tolist()
+    seleccion = st.multiselect(
+        "Elige artistas para comparar:",
+        options=_orden,
+        default=_orden[:2],
+        max_selections=3,
+        key="comparador_artistas",
+        help="Máximo 3 · el orden de selección define el color en los gráficos.",
+    )
+
+    if len(seleccion) < 2:
+        st.info(
+            "Comparador listo: elige **al menos 2 artistas** para ver la "
+            "comparativa."
+        )
+    else:
+        sub = (
+            df[df["artist_name"].isin(seleccion)]
+            .set_index("artist_name")
+            .loc[seleccion]
+        )
+        colores = ["#0066FF", "#00CED1", "#FF4757"]
+
+        # ── 6 paneles (2x3) con la MISMA paleta por artista ──
+        fig = make_subplots(
+            rows=2,
+            cols=3,
+            subplot_titles=(
+                "Fans Deezer (escala log)",
+                "Deezer Rank (escala log)",
+                "Scouting Score (/100)",
+                "Prob. Viralidad 6M (%)",
+                "Prob. Breakout 6M · Cox (%)",
+                "Mes óptimo de firma (0 = sin riesgo >10%)",
+            ),
+            vertical_spacing=0.18,
+            horizontal_spacing=0.09,
+        )
+
+        for i, artista in enumerate(sub.index):
+            color = colores[i % len(colores)]
+            fans = sub.at[artista, "deezer_fans"]
+            rank = sub.at[artista, "deezer_rank"]
+            score = sub.at[artista, "scouting_score"]
+            viral = sub.at[artista, "probabilidad_viral"]
+            breakout = sub.at[artista, "prob_breakout_6m"]
+            mes = sub.at[artista, "mes_optimo_firma"]
+            tiene_ventana = pd.notna(mes)
+
+            trazas = [
+                # row1: audiencia
+                dict(x=[artista], y=[fans], text=f"{int(fans):,}", t="fans"),
+                dict(x=[artista], y=[rank], text=f"{int(rank):,}", t="rank"),
+                dict(x=[artista], y=[score], text=f"{score:.1f}", t="score"),
+                # row2
+                dict(x=[artista], y=[viral], text=f"{viral:.1f}%", t="viral"),
+                dict(
+                    x=[artista],
+                    y=[breakout if pd.notna(breakout) else 0],
+                    text=f"{breakout:.1f}%" if pd.notna(breakout) else "—",
+                    t="breakout",
+                ),
+                dict(
+                    x=[artista],
+                    y=[mes if tiene_ventana else 0],
+                    text=f"Mes {int(mes)}" if tiene_ventana else "—",
+                    t="mes",
+                ),
+            ]
+            for pos, tr in enumerate(trazas):
+                fila, columna = divmod(pos, 3)
+                fig.add_trace(
+                    go.Bar(
+                        x=tr["x"],
+                        y=tr["y"],
+                        text=tr["text"],
+                        textposition="outside",
+                        textfont=dict(size=11, color="#e2e8f0"),
+                        marker=dict(
+                            color=color,
+                            line=dict(width=0),
+                            opacity=0.9,
+                        ),
+                        name=artista,
+                        legendgroup=artista,
+                        showlegend=pos == 0,  # un ítem por artista en la leyenda
+                        hovertemplate="%{x}<br>%{text}<extra></extra>",
+                    ),
+                    row=fila + 1,
+                    col=columna + 1,
+                )
+
+        fig.update_yaxes(type="log", row=1, col=1)
+        fig.update_yaxes(type="log", row=1, col=2)
+        fig.update_yaxes(range=[0, 105], row=1, col=3)
+        fig.update_yaxes(range=[0, 105], row=2, col=1)
+        fig.update_yaxes(range=[0, 105], row=2, col=2)
+        fig.update_yaxes(range=[0, 13], row=2, col=3, dtick=1)
+        fig.update_layout(barmode="group")
+        fig.update_annotations(font=dict(color="#e2e8f0", size=13))
+        st.plotly_chart(
+            estilo_plotly(fig, alto=640, leyenda=True),
+            use_container_width=True,
+            key="comparador_charts",
+        )
+        st.caption(
+            "Los ejes de audiencia usan escala logarítmica (los artistas "
+            "difieren en dos órdenes de magnitud). En *Mes óptimo*, la barra "
+            "en 0 significa que el riesgo no cruza el 10% en 12 meses."
+        )
+
+        # ── Ficha técnica lado a lado (lo que un A&R lee en la reunión) ──
+        st.markdown("#### 📋 Ficha comparativa")
+
+        COLUMNAS_FICHA = [
+            ("scouting_score", "Scouting Score", "score"),
+            ("ar_recommendation", "Recomendación A&R", "texto"),
+            ("deezer_fans", "Fans Deezer", "entero"),
+            ("deezer_rank", "Deezer Rank", "entero"),
+            ("est_alcance_max", "Alcance est. máx.", "entero"),
+            ("probabilidad_viral", "Prob. Viralidad 6M", "pct"),
+            ("prob_breakout_6m", "Prob. Breakout 6M (Cox)", "pct"),
+            ("mes_optimo_firma", "Ventana de firma", "mes"),
+            ("riesgo", "Riesgo Cox", "texto"),
+            ("top_track_name", "Top Track", "texto"),
+            ("top_track_rank", "Rank Top Track", "entero"),
+            ("genero", "Género", "texto"),
+            ("ratio_fans_rank", "ratio_fans_rank (ADN)", "dec"),
+            ("top_track_dominance", "top_track_dominance (ADN)", "dec"),
+            ("es_solista", "Es solista", "si_no"),
+            ("nombre_corto", "Nombre corto", "si_no"),
+        ]
+
+        def _fmt_ficha(tipo, valor):
+            try:
+                if valor is None or pd.isna(valor):
+                    return "—"
+            except (TypeError, ValueError):
+                pass
+            if tipo == "entero":
+                return f"{int(valor):,}"
+            if tipo == "score":
+                return f"{valor:.1f}"
+            if tipo == "pct":
+                return f"{valor:.1f}%"
+            if tipo == "dec":
+                return f"{float(valor):.3f}"
+            if tipo == "mes":
+                return f"Mes {int(valor)}"
+            if tipo == "si_no":
+                return "Sí" if float(valor) == 1 else "No"
+            return str(valor)
+
+        ficha = {}
+        for col, etiqueta, tipo in COLUMNAS_FICHA:
+            if col not in sub.columns:
+                continue
+            ficha[etiqueta] = {
+                artista: _fmt_ficha(tipo, sub.at[artista, col])
+                for artista in sub.index
+            }
+        st.dataframe(
+            pd.DataFrame(ficha).T, use_container_width=True, hide_index=False
+        )
+
+        # ── Veredicto del comparador + salto al perfil ──
+        resumen = []
+        mejor_score = sub["scouting_score"].idxmax()
+        resumen.append(
+            f"mejor Scouting Score: **{mejor_score}** "
+            f"({sub['scouting_score'].max():.1f}/100)"
+        )
+        if "prob_breakout_6m" in sub.columns and sub["prob_breakout_6m"].notna().any():
+            mejor_bo = sub["prob_breakout_6m"].idxmax()
+            resumen.append(
+                f"mayor prob. de breakout a 6M: **{mejor_bo}** "
+                f"({sub['prob_breakout_6m'].max():.1f}%)"
+            )
+        if "deezer_fans" in sub.columns:
+            resumen.append(f"mayor base de fans: **{sub['deezer_fans'].idxmax()}**")
+        st.caption(" · ".join(resumen))
+
+        botones = st.columns(len(sub.index))
+        for i, artista in enumerate(sub.index):
+            with botones[i]:
+                if st.button(
+                    f"👤 Ver perfil de {artista}",
+                    key=f"perfil_comparador_{artista}",
+                    use_container_width=True,
+                ):
+                    st.session_state.artista_seleccionado = artista
+                    st.session_state.vista_actual = "perfil"
+                    st.rerun()
+
+    st.stop()
+
 
 # ==========================================
 # VISTA 3: TOURING — página independiente (mismo despacho que Forecasting)
