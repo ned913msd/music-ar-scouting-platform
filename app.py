@@ -992,7 +992,12 @@ _scripts_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts
 if _scripts_dir not in sys.path:
     sys.path.insert(0, _scripts_dir)
 
-from prediccion_ventana_firma import FEATURES as COX_FEATURES, predecir_lote
+from prediccion_ventana_firma import (
+    FEATURES as COX_FEATURES,
+    predecir_lote,
+    curva_supervivencia,
+    TIMES as COX_TIMES,
+)
 
 _REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -1204,6 +1209,207 @@ def mostrar_perfil_artista(artist_name):
         )
         st.markdown(f"[🔗 Ver en Deezer]({artista['deezer_link']})")
         st.markdown(f"💡 {artista['strategic_insight']}")
+
+    st.divider()
+
+    # ==========================================
+    # SIMULADOR DE ESCENARIOS "¿Qué pasa si...?"
+    # Palancas: crecimiento de fans + presupuesto + valor por fan. El
+    # crecimiento se traduce en la ÚNICA feature del Cox que depende de fans
+    # (ratio_fans_rank = log1p(fans/rank), con rank fijo) → prob. de
+    # breakout y ventana se recalculan con el MISMO modelo entrenado, nunca
+    # con una regla inventada. El ROI declara su supuesto en la propia UI.
+    # ==========================================
+    st.subheader("🎮 Simulador de Escenarios")
+    st.markdown(
+        "**¿Qué pasa si...?** Mueve las palancas y mira cómo cambian la "
+        "probabilidad de breakout (Cox), la ventana de firma y el ROI de la "
+        "campaña."
+    )
+
+    _clave_sim = str(artista["artist_name"]).lower().replace(" ", "_")
+    col_crec, col_inv, col_val = st.columns(3)
+    with col_crec:
+        crecimiento = st.slider(
+            "Crecimiento de fans simulado (%)",
+            min_value=0,
+            max_value=500,
+            value=50,
+            step=10,
+            key=f"sim_crec_{_clave_sim}",
+            help=(
+                "El rank se mantiene fijo: solo cambia la ratio fans/rank "
+                "que el modelo Cox recibe como feature."
+            ),
+        )
+    with col_inv:
+        inversion = st.slider(
+            "Inversión en marketing (USD)",
+            min_value=0,
+            max_value=100000,
+            value=10000,
+            step=5000,
+            key=f"sim_inv_{_clave_sim}",
+        )
+    with col_val:
+        valor_fan = st.selectbox(
+            "Valor por fan nuevo (supuesto)",
+            options=[0.02, 0.05, 0.10],
+            index=1,
+            format_func=lambda v: f"${v:.2f} por fan",
+            key=f"sim_valor_{_clave_sim}",
+            help="Supuesto de negocio editable: no es una tasación del artista.",
+        )
+
+    fans_actuales = int(artista["deezer_fans"])
+    fans_simulados = int(fans_actuales * (1 + crecimiento / 100))
+    fans_nuevos = fans_simulados - fans_actuales
+    valor_generado = fans_nuevos * valor_fan
+    roi_neto = valor_generado - inversion
+    costo_por_fan = (inversion / fans_nuevos) if fans_nuevos > 0 else None
+    multiplo = (valor_generado / inversion) if inversion > 0 else None
+
+    # ── Recálculo del Cox con la ratio simulada ──
+    prob_actual = artista.get("prob_breakout_6m", float("nan"))
+    prob_sim = pd.NA
+    ventana_sim = pd.NA
+    riesgo_sim = "—"
+    cph_sim = cargar_modelo_cox()
+    rank_artista = (
+        int(artista["deezer_rank"]) if pd.notna(artista.get("deezer_rank")) else 0
+    )
+    X_base = X_sim = None
+    if cph_sim is not None and all(c in artista.index for c in COX_FEATURES):
+        X_base = pd.DataFrame([{c: artista[c] for c in COX_FEATURES}]).astype(float)
+        X_sim = X_base.copy()
+        if rank_artista > 0:
+            X_sim.loc[0, "ratio_fans_rank"] = math.log1p(fans_simulados / rank_artista)
+            _pred_sim = predecir_lote(cph_sim, X_sim)
+            prob_sim = float(_pred_sim["prob_breakout_6m"].iloc[0]) * 100
+            ventana_sim = _pred_sim["mes_optimo_firma"].iloc[0]
+            riesgo_sim = str(_pred_sim["riesgo"].iloc[0])
+
+    _sim_ok = cph_sim is not None and X_sim is not None and pd.notna(prob_sim)
+
+    display_kpi_grid(
+        [
+            ("Fans Actuales", f"{fans_actuales:,}", "🎧"),
+            ("Fans Simulados", f"{fans_simulados:,}", "📈"),
+            (
+                "Prob. Breakout (actual)",
+                f"{prob_actual:.1f}%" if pd.notna(prob_actual) else "—",
+                "🪧",
+            ),
+            (
+                "Prob. Breakout (simulada)",
+                f"{prob_sim:.1f}%" if _sim_ok else "—",
+                "🎯",
+            ),
+        ]
+    )
+
+    if _sim_ok:
+        ventana_sim_txt = (
+            "riesgo <10% los 12 meses"
+            if pd.isna(ventana_sim)
+            else f"firmar antes del mes {int(ventana_sim)}"
+        )
+        delta_txt = (
+            f" ({prob_sim - float(prob_actual):+.1f} pp vs. actual)"
+            if pd.notna(prob_actual)
+            else ""
+        )
+        st.markdown(
+            f"🪧 **Cox simulado:** Prob. breakout 6M **{prob_sim:.1f}%**"
+            f"{delta_txt} · Ventana: **{ventana_sim_txt}** · "
+            f"Riesgo: **{riesgo_sim}** · Palanca: **+{crecimiento}% fans**"
+        )
+
+        # Curva acumulada de breakout (1 - S(t)): actual vs simulada
+        S_actual = curva_supervivencia(cph_sim, X_base)
+        S_simulada = curva_supervivencia(cph_sim, X_sim)
+        meses = [t / 30 for t in COX_TIMES]
+        fig_sim = go.Figure()
+        fig_sim.add_trace(
+            go.Scatter(
+                x=meses,
+                y=(1 - S_actual[0]) * 100,
+                name="Actual",
+                mode="lines+markers",
+                line=dict(color=NEON_AZUL, width=3),
+                marker=dict(size=6),
+                hovertemplate="Mes %{x:.0f}<br>%{y:.1f}%<extra>Actual</extra>",
+            )
+        )
+        fig_sim.add_trace(
+            go.Scatter(
+                x=meses,
+                y=(1 - S_simulada[0]) * 100,
+                name=f"Simulado (+{crecimiento}%)",
+                mode="lines+markers",
+                line=dict(color=NEON_CIAN, width=3),
+                marker=dict(size=6),
+                hovertemplate="Mes %{x:.0f}<br>%{y:.1f}%<extra>Simulado</extra>",
+            )
+        )
+        fig_sim.add_vline(x=6, line_dash="dash", line_color="#94a3b8")
+        fig_sim.update_layout(title="Probabilidad acumulada de breakout (Cox)")
+        fig_sim.update_xaxes(title_text="Meses")
+        fig_sim.update_yaxes(title_text="Prob. acumulada (%)", range=[0, 100])
+        st.plotly_chart(
+            estilo_plotly(fig_sim, alto=400, leyenda=True),
+            use_container_width=True,
+            key="chart_simulador_escenarios",
+        )
+    else:
+        st.info(
+            "🎮 La predicción simulada necesita el modelo Cox desplegado y un "
+            "rank reportado (>0). Fans y ROI siguen siendo calculables con "
+            "los supuestos elegidos."
+        )
+
+    _roi_color = "#10B981" if roi_neto > 0 else "#EF4444"
+    st.markdown(
+        f"""
+        <div class="glass-card">
+            <h4>💶 Resultados de la Simulación</h4>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px;">
+                <div>
+                    <p style="color: #94a3b8; font-size: 0.85rem; margin: 0;">Fans nuevos</p>
+                    <p style="font-size: 1.6rem; font-weight: 700; color: #E2E8F0; margin: 0;">+{fans_nuevos:,}</p>
+                </div>
+                <div>
+                    <p style="color: #94a3b8; font-size: 0.85rem; margin: 0;">Costo por fan (CAC)</p>
+                    <p style="font-size: 1.6rem; font-weight: 700; color: #E2E8F0; margin: 0;">{f"${costo_por_fan:.3f}" if costo_por_fan is not None else "—"}</p>
+                </div>
+                <div>
+                    <p style="color: #94a3b8; font-size: 0.85rem; margin: 0;">Valor generado</p>
+                    <p style="font-size: 1.6rem; font-weight: 700; color: #00CED1; margin: 0;">${valor_generado:,.0f}</p>
+                </div>
+                <div>
+                    <p style="color: #94a3b8; font-size: 0.85rem; margin: 0;">Inversión</p>
+                    <p style="font-size: 1.6rem; font-weight: 700; color: #E2E8F0; margin: 0;">${inversion:,}</p>
+                </div>
+                <div>
+                    <p style="color: #94a3b8; font-size: 0.85rem; margin: 0;">ROI Neto</p>
+                    <p style="font-size: 1.6rem; font-weight: 700; color: {_roi_color}; margin: 0;">{"" if roi_neto >= 0 else "-"}${abs(roi_neto):,.0f}</p>
+                </div>
+                <div>
+                    <p style="color: #94a3b8; font-size: 0.85rem; margin: 0;">Múltiplo (valor / inversión)</p>
+                    <p style="font-size: 1.6rem; font-weight: 700; color: {_roi_color}; margin: 0;">{f"{multiplo:.1f}x" if multiplo is not None else "—"}</p>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        f"Supuestos declarados: rank fijo (solo se recalcula "
+        f"ratio_fans_rank = log1p(fans/rank)) · valor por fan = "
+        f"${valor_fan:.2f} (supuesto editable, no es una tasación) · la "
+        f"inversión no modifica el modelo Cox · la línea punteada marca el "
+        f"horizonte de 6 meses."
+    )
 
     st.divider()
 
