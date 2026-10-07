@@ -1044,6 +1044,29 @@ def cargar_y_predecir_cox(data):
 
 df = cargar_y_predecir_cox(df)
 
+
+def _conectar_pais_origen(data):
+    """Trae `pais_origen` desde la cohorte del Cox (por nombre de artista).
+
+    El seed de Deezer no expone el país (la API pública tampoco): la única
+    fuente versionada es la cohorte `data/cohort_table.csv`, que es la misma
+    con la que se entrenó el modelo. Si falta el archivo la app sigue
+    funcionando con 'Desconocido'.
+    """
+    try:
+        cohorte = pd.read_csv(
+            os.path.join(_REPO_DIR, "data", "cohort_table.csv"),
+            usecols=["artist_name", "pais_origen"],
+        ).drop_duplicates("artist_name")
+        data = data.merge(cohorte, on="artist_name", how="left")
+        data["pais_origen"] = data["pais_origen"].fillna("Desconocido")
+    except (FileNotFoundError, ValueError, pd.errors.EmptyDataError):
+        data["pais_origen"] = "Desconocido"
+    return data
+
+
+df = _conectar_pais_origen(df)
+
 # Barra de estado SaaS: indicador de salud + tamaño del universo vigilado
 st.markdown(
     f"🟢 **En línea** · **{len(df)}** artistas monitorizados · Fuente: "
@@ -1189,6 +1212,7 @@ def mostrar_perfil_artista(artist_name):
         st.markdown(
             f"{badge} · Score: **{artista['scouting_score']:.0f}/100** · "
             f"Género: **{artista.get('genero', 'N/A')}** · "
+            f"País: **{artista.get('pais_origen', '—')}** · "
             f"Prob. Viralidad 6M: **{artista['probabilidad_viral']:.1f}%**",
             unsafe_allow_html=True,  # el badge inline llega como HTML
         )
@@ -1697,6 +1721,7 @@ if vista_tab == "🆚 Comparador":
             ("top_track_name", "Top Track", "texto"),
             ("top_track_rank", "Rank Top Track", "entero"),
             ("genero", "Género", "texto"),
+            ("pais_origen", "País", "texto"),
             ("ratio_fans_rank", "ratio_fans_rank (ADN)", "dec"),
             ("top_track_dominance", "top_track_dominance (ADN)", "dec"),
             ("es_solista", "Es solista", "si_no"),
@@ -2045,11 +2070,86 @@ else:
 
     min_score = st.sidebar.slider("Scouting Score Mínimo", 0, 100, 0)
 
+    # ── Filtros avanzados (Prioridad 1.3): género, país, fans y Cox ──
+    # Todos con default "sin filtrar" para no alterar el universo completo.
+    with st.sidebar.expander("🧭 Filtros Avanzados", expanded=False):
+        opciones_genero = sorted(df["genero"].dropna().astype(str).unique())
+        generos_sel = st.multiselect(
+            "Género",
+            options=opciones_genero,
+            default=[],
+            key="filtro_genero",
+            help="Vacío = todos los géneros.",
+        )
+        opciones_pais = sorted(df["pais_origen"].dropna().astype(str).unique())
+        paises_sel = st.multiselect(
+            "País de origen",
+            options=opciones_pais,
+            default=[],
+            key="filtro_pais",
+            help="Mercado de origen según la cohorte con la que se entrenó "
+            "el modelo Cox (la API de Deezer no expone país).",
+        )
+
+        fans_min = int(df["deezer_fans"].min())
+        fans_max = int(df["deezer_fans"].max())
+        paso_fans = max(1, (fans_max - fans_min) // 200)
+        # El extremo superior se alinea al paso: si no, el tirador derecho
+        # queda fuera de la retícula y el artista con más fans se excluye.
+        tope_fans = fans_min + paso_fans * (
+            (fans_max - fans_min + paso_fans - 1) // paso_fans
+        )
+        rango_fans = st.slider(
+            "Rango de fans (Deezer)",
+            min_value=fans_min,
+            max_value=tope_fans,
+            value=(fans_min, tope_fans),
+            step=paso_fans,
+            key="filtro_fans",
+            format="%d",
+            help="Escala lineal sobre los fans de Deezer.",
+        )
+
+        prob_min = st.slider(
+            "Prob. Breakout 6M mínima (Cox)",
+            0,
+            100,
+            0,
+            key="filtro_prob_breakout",
+            help="0 = sin filtrar. Modela la probabilidad de que el artista "
+            "cruce el umbral de breakout dentro de 6 meses.",
+        )
+        solo_ventana = st.checkbox(
+            "Solo con ventana de firma (riesgo >10%)",
+            value=False,
+            key="filtro_ventana",
+            help="Excluye a los artistas cuyo riesgo nunca supera el 10% "
+            "durante los 12 meses (sin ventana de firma).",
+        )
+
     # Filtrar datos
     df_filtered = df[
         (df["ar_recommendation"].isin(recommendation_filter))
         & (df["scouting_score"] >= min_score)
+        & (df["deezer_fans"] >= rango_fans[0])
+        & (df["deezer_fans"] <= rango_fans[1])
+        & (df["prob_breakout_6m"].fillna(0) >= prob_min)
     ].sort_values("scouting_score", ascending=False)
+
+    if generos_sel:
+        df_filtered = df_filtered[
+            df_filtered["genero"].astype(str).isin(generos_sel)
+        ]
+    if paises_sel:
+        df_filtered = df_filtered[
+            df_filtered["pais_origen"].astype(str).isin(paises_sel)
+        ]
+    if solo_ventana:
+        df_filtered = df_filtered[df_filtered["mes_optimo_firma"].notna()]
+
+    st.sidebar.caption(
+        f"🎛️ **{len(df_filtered)}** de {len(df)} artistas tras los filtros"
+    )
 
 if df_filtered.empty:
     if patron:
@@ -2323,9 +2423,14 @@ rename_tabla = {
     "fan_rank_ratio": "Fan/Rank Ratio",
     "strategic_insight": "Insight",
 }
+_idx_col = 1
 if "genero" in df_filtered.columns:
-    columnas_tabla.insert(1, "genero")
+    columnas_tabla.insert(_idx_col, "genero")
     rename_tabla["genero"] = "Género"
+    _idx_col += 1
+if "pais_origen" in df_filtered.columns:
+    columnas_tabla.insert(_idx_col, "pais_origen")
+    rename_tabla["pais_origen"] = "País"
 tabla_cox = df_filtered[columnas_tabla].copy()
 # Sin ventana de firma (riesgo <10% todo el año): en blanco no se distingue
 # de un fallo de cálculo, así que se muestra el guion explícito
