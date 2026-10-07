@@ -8,10 +8,12 @@
 #   gráfico que el dashboard de Streamlit muestra en el panel de Forecasting.
 #
 # Estrategia de motor (decisión de ingeniería, no de tutorial):
-#   * Prophet (Meta) si está instalado y funciona → estacionalidad + bandas.
-#   * Fallback transparente a LinearRegression (scikit-learn) con banda de
-#     confianza 95% por residuos, si Prophet no está disponible o falla en el
-#     entorno (su backend CmdStan es pesado de compilar en Windows).
+#   * scikit-learn (LinearRegression) → motor por DEFECTO: el arranque del
+#     dashboard no debe pagar el import de Prophet (≈2.5 s) ni su backend
+#     CmdStan, pesado de compilar en Windows.
+#   * Prophet (Meta) → opt-in con FORECAST_ENGINE=prophet: estacionalidad +
+#     bandas cuando el entorno lo soporta. Si no está o falla, se vuelve
+#     a LinearRegression sin romper la vista.
 #   El dashboard NO sabe qué motor corrió: consume el PNG y el resumen igual.
 #
 # Datos:
@@ -29,6 +31,7 @@
 #   ./venv/Scripts/python scripts/forecast_fans.py     → guarda PNG en notebooks/
 #   import forecast_fans; forecast_fans.fit_and_forecast(save_png=False)
 #   forecast_fans.fit_and_forecast(artista="Feid", fans_actuales=9_000_000)
+#   FORECAST_ENGINE=prophet ./venv/Scripts/python scripts/forecast_fans.py
 # ============================================================================
 
 import sys
@@ -56,6 +59,15 @@ MESES_FUTUROS = 6
 # (el propio Prophet lo advierte: solo 1-2 repeticiones del ciclo →
 # descomposición inestable y valles falsos). Se activa solo con MÁS de 2 años.
 MESES_MIN_ESTACIONALIDAD = 24
+
+
+def _motor_preferido() -> str:
+    """Motor de forecasting: 'sklearn' por defecto, 'prophet' por entorno.
+
+    FORECAST_ENGINE=prophet activa Prophet (import ≈2.5 s + fit); cualquier
+    otro valor usa LinearRegression, que arranca en milisegundos.
+    """
+    return os.environ.get("FORECAST_ENGINE", "sklearn").strip().lower()
 
 
 def _meses_futuros_historico(n_meses: int) -> pd.DatetimeIndex:
@@ -134,7 +146,7 @@ def _prophet_forecast(y: np.ndarray):
 
 
 def _sklearn_forecast(y: np.ndarray):
-    """Fallback: regresión lineal + banda 95% por residuos."""
+    """Motor por defecto: regresión lineal + banda 95% por residuos."""
     from sklearn.linear_model import LinearRegression
 
     x = np.arange(len(y)).reshape(-1, 1)
@@ -195,14 +207,22 @@ def fit_and_forecast(
             "proyectable."
         )
 
-    resultado = _prophet_forecast(y)
-    if resultado is None:
+    # Motor por defecto: LinearRegression (rápido). Prophet solo si el entorno
+    # lo pide con FORECAST_ENGINE=prophet, y con él cae a sklearn si falla.
+    if _motor_preferido() == "prophet":
+        resultado = _prophet_forecast(y)
+        if resultado is None:
+            resultado = _sklearn_forecast(y)
+    else:
         resultado = _sklearn_forecast(y)
     pred, lo, hi, fechas_fut, engine = resultado
+    # Prophet devuelve una Serie y sklearn un DatetimeIndex: se normaliza aquí
+    # para que el resto del módulo (CSV, eje X) funcione con ambos motores.
+    fechas_fut = pd.DatetimeIndex(fechas_fut)
 
     df_fc = pd.DataFrame(
         {
-            "fecha": fechas_fut.dt.strftime("%Y-%m"),
+            "fecha": fechas_fut.strftime("%Y-%m"),
             "fans_proyectados": pred.round(0).astype(int),
             "limite_inferior": lo.round(0).astype(int),
             "limite_superior": hi.round(0).astype(int),

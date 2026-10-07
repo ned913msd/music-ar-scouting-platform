@@ -45,3 +45,5 @@ dbt_packages/
 # Estado local del usuario (favoritos y tema; la app los regenera en disco)
 data/favoritos.json
 data/preferencias.json
+data/probabilidades.json
+data/predicciones_cox.json

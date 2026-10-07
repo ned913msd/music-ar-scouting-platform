@@ -1,22 +1,26 @@
+import time
+
+# Instante de arranque del script: alimenta el indicador de carga del sidebar
+# (cada re-render de Streamlit vuelve a ejecutar el archivo desde aquí).
+_T0 = time.perf_counter()
+
 import base64
 import json
 import math
 
 import streamlit as st
 import pandas as pd
-import duckdb
 import joblib
 import os
 import yaml
 
 import streamlit_authenticator as stauth
 
-from reporte_pdf import generar_reporte_pdf
+# Lazy loading: pesadas SOLO cuando se usan (ver cargar_generador_pdf y las
+# vistas): reporte_pdf (fpdf+PIL ≈0.35 s), prophet/lifelines/folium ya se
+# importan dentro de sus vistas/motores. Nada de eso corre en la portada.
 import plotly.express as px
 import plotly.graph_objects as go
-from PIL import Image
-import requests
-from io import BytesIO
 
 st.set_page_config(
     page_title="A&R Scouting Command Center - Deezer Data",
@@ -24,6 +28,19 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+
+@st.cache_resource
+def cargar_generador_pdf():
+    """Importa el motor de informes BAJO DEMANDA.
+
+    reporte_pdf trae fpdf + PIL + touring_engine (≈0.35 s de import) y solo
+    se usa al pulsar "Generar Informe": cargarlo en el arranque retrasaba la
+    portada sin aportar nada.
+    """
+    from reporte_pdf import generar_reporte_pdf
+
+    return generar_reporte_pdf
 
 # Tema visual (oscuro por defecto). Se guarda en data/preferencias.json para
 # que sobreviva a un reload de página: session_state NO sobrevive a reload.
@@ -47,7 +64,6 @@ def guardar_tema(tema):
             json.dump({"tema": tema}, f, ensure_ascii=False, indent=2)
     except OSError:
         pass
-
 
 # Inyecta DESPUÉS del CSS base (misma especificidad → gana el cascada):
 # sólo se emite cuando el usuario elige modo claro.
@@ -760,7 +776,6 @@ def display_kpi_grid(kpis):
         f'<div class="kpi-container">{cards}</div>', unsafe_allow_html=True
     )
 
-
 # Fase 4 — etiquetas de acción sobre la misma columna `riesgo` del perfil y
 # la tabla (Alto >30%, Medio >10%, Bajo el resto en prob. de breakout a 6M).
 ACCION_RIESGO = {
@@ -803,7 +818,13 @@ def artist_card_html(row, photo_data_uri=None, index=0):
     viral = f"{row['probabilidad_viral']:.1f}"
     viral_pct = min(row["probabilidad_viral"] / 100.0, 1.0) * 100
     if photo_data_uri is None:
-        img_html = f'<img class="artist-photo" src="{row["picture_url"]}" alt="{row["artist_name"]}">'
+        # La foto va por URL directa (el navegador la baja en paralelo: cero
+        # requests en el backend) con placeholder si la CDN falla.
+        img_html = (
+            f'<img class="artist-photo" src="{row["picture_url"]}" '
+            f'onerror="this.src=\'data:image/svg+xml;base64,'
+            f'{_SVG_PLACEHOLDER_B64}\'" alt="{row["artist_name"]}">'
+        )
     else:
         img_html = f'<img class="artist-photo" src="{photo_data_uri}" alt="{row["artist_name"]}">'
     # Shine sobre un CONTENEDOR: los <img> (elementos reemplazados) no
@@ -968,7 +989,6 @@ def display_badge_with_pulse(text, color="#0066FF", inline=False):
         return html
     st.markdown(html, unsafe_allow_html=True)
 
-
 # ==========================================
 # PLOTLY: TEMA SaaS PARA TODOS LOS GRÁFICOS
 # ==========================================
@@ -1016,10 +1036,8 @@ def estilo_plotly(fig, alto=360, leyenda=False):
     )
     return fig
 
-
 TEMA_APP = leer_tema()
 load_custom_css(TEMA_APP)
-
 
 # ==========================================
 # FAVORITOS — lista personal del usuario (A&R). Se persiste en
@@ -1063,7 +1081,6 @@ def alternar_favorito(nombre):
     guardar_favoritos(favoritos)
     return es_fav
 
-
 if "favoritos" not in st.session_state:
     st.session_state["favoritos"] = _leer_favoritos()
 
@@ -1078,7 +1095,6 @@ def cargar_config_auth():
     ruta_config = os.path.join(os.path.dirname(__file__), "config.yaml")
     with open(ruta_config, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
-
 
 config_auth = cargar_config_auth()
 # Instancia por corrida (patrón documentado del paquete): el objeto maneja
@@ -1140,6 +1156,115 @@ def cargar_modelo_ml():
         st.warning("⚠️ Modelo no encontrado. Ejecuta el Notebook primero.")
         return None, None
 
+# Caché de predicciones en disco: cargar scikit-learn + el RandomForest cuesta
+# ≈1.4 s por proceso, así que la probabilidad viral de cada artista se guarda
+# y solo se recalcula si cambian sus datos (fingerprint fans|rank|track|ratio).
+_RUTA_PROBS = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "data", "probabilidades.json"
+)
+# Igual para el Cox: la primera predicción importa lifelines (≈1.3 s).
+_RUTA_COX = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "data", "predicciones_cox.json"
+)
+
+
+def _leer_cache_json(ruta):
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            datos = json.load(f)
+        return datos if isinstance(datos, dict) else {}
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return {}
+
+
+def _guardar_cache_json(ruta, cache):
+    try:
+        os.makedirs(os.path.dirname(ruta), exist_ok=True)
+        tmp = ruta + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cache, f)
+        os.replace(tmp, ruta)
+    except OSError:
+        pass
+
+
+def _fmt_key(valor):
+    """Clave estable de una feature para los cachés de disco."""
+    if isinstance(valor, str):
+        return valor.strip()
+    try:
+        v = float(valor)
+    except (TypeError, ValueError):
+        return str(valor)
+    if math.isnan(v):
+        return "nan"
+    return f"{v:.6g}"
+
+
+def _cache_val(valor):
+    """Serializa un valor de predicción para JSON (pd.NA/nan → "")."""
+    if valor is None or valor is pd.NA:
+        return ""
+    if isinstance(valor, float) and math.isnan(valor):
+        return ""
+    if hasattr(valor, "item"):
+        try:
+            valor = valor.item()
+        except (ValueError, AttributeError):
+            pass
+    if isinstance(valor, (str, int, float, bool)):
+        return valor
+    return str(valor)
+
+
+def _clave_probs(fans, rank, track, ratio):
+    return (
+        f"{float(fans):.0f}|{float(rank):.0f}|{float(track):.0f}|"
+        f"{float(ratio):.4f}"
+    )
+
+
+def _probabilidades_virales(data):
+    """Prob. viral 6M por artista, con caché en disco por fila.
+
+    Solo carga scikit-learn (≈1.4 s) si el caché no cubre todas las filas:
+    en un arranque normal el JSON está completo y el proceso ni toca sklearn.
+    """
+    claves = [
+        _clave_probs(f, r, t, ra)
+        for f, r, t, ra in zip(
+            data["deezer_fans"],
+            data["deezer_rank"],
+            data["top_track_rank"],
+            data["fan_rank_ratio"],
+        )
+    ]
+    cache = _leer_cache_json(_RUTA_PROBS)
+    nuevo = {k: cache[k] for k in claves if k in cache}
+    if all(k in cache for k in claves):
+        return pd.Series(
+            [nuevo[k] for k in claves], index=data.index, name="probabilidad_viral"
+        )
+
+    modelo_ml, feature_names = cargar_modelo_ml()
+    if modelo_ml is None:
+        return pd.Series(0.0, index=data.index, name="probabilidad_viral")
+
+    growth_proxy = (data["fan_rank_ratio"] / 15.0).clip(-0.05, 0.30)
+    X = pd.DataFrame(
+        {
+            "current_fans": data["deezer_fans"],
+            "current_rank": data["deezer_rank"],
+            "track_rank": data["top_track_rank"],
+            "monthly_growth_rate": growth_proxy,
+            "genero_encoded": 0,
+        }
+    )[feature_names]
+    probs = (modelo_ml.predict_proba(X)[:, 1] * 100).round(1)
+    for k, p in zip(claves, probs):
+        nuevo[k] = float(p)
+    _guardar_cache_json(_RUTA_PROBS, nuevo)
+    return pd.Series(probs, index=data.index, name="probabilidad_viral")
 
 st.title("🎵 A&R Scouting Command Center")
 st.markdown(
@@ -1156,7 +1281,9 @@ if primera_carga:
         "Conectando con Deezer API y calculando predicciones de ML...",
         slot=load_slot,
     )
-modelo_ml, feature_names = cargar_modelo_ml()
+# La predicción de viralidad ya viene cacheada en disco (ver
+# _probabilidades_virales): si el caché está completo el proceso ni importa
+# scikit-learn, que es lo que más cuesta del arranque (≈1.4 s).
 if primera_carga:
     show_skeleton_loaders(rows=3, slot=load_slot)
 
@@ -1173,54 +1300,16 @@ bootstrap_db.ensure_table(AR_DB)
 
 conn = bootstrap_db.get_connection(AR_DB)  # única conexión read-write del proceso
 
-# Cargar datos del modelo (creado por dbt o reconstruido por el bootstrap)
+# Firma del warehouse (mtime): clave de caché del dataset. Si el robot
+# semanal reescribe el .duckdb, la caché de 5 min se invalida sola.
 try:
-    df = pd.read_sql_query("SELECT * FROM artist_scouting_deezer", conn)
-except Exception:
-    st.error("❌ No se encontraron datos. Ejecuta primero: `dbt seed && dbt run`")
-    st.stop()
+    _firma_db = os.path.getmtime(AR_DB)
+except OSError:
+    _firma_db = 0.0
 
-# ==========================================
-# PREDICCIÓN DE MACHINE LEARNING EN TIEMPO REAL
-# ==========================================
-if modelo_ml is not None:
-    # Proxy de crecimiento mensual calibrado al dominio del entrenamiento
-    # U(-0.05, 0.30): ratio de conversión oyente→fan escalado y acotado
-    # (el modelo aprendió con tasas reales, no con valores fuera de dominio)
-    growth_proxy = (df["fan_rank_ratio"] / 15.0).clip(-0.05, 0.30)
-
-    # Preparamos los datos para que coincidan con el entrenamiento
-    df_ml_input = pd.DataFrame(
-        {
-            "current_fans": df["deezer_fans"],
-            "current_rank": df["deezer_rank"],
-            "track_rank": df["top_track_rank"],
-            "monthly_growth_rate": growth_proxy,
-            "genero_encoded": 0,  # valor por defecto para simplificar el demo
-        }
-    )
-
-    # Aseguramos el orden exacto de columnas del entrenamiento
-    df_ml_input = df_ml_input[feature_names]
-
-    # Probabilidad de la clase "1" (Viral en 6 meses)
-    df["probabilidad_viral"] = (
-        modelo_ml.predict_proba(df_ml_input)[:, 1] * 100
-    ).round(1)
-else:
-    df["probabilidad_viral"] = 0.0
-
-# Datos y predicciones listas: fuera spinner y skeletons (solo si hubo)
-if primera_carga:
-    load_slot.empty()
-    st.session_state.carga_completada = True
-
-# Alcance multi-plataforma estimado (factores documentados en el perfil).
-# Debe existir ANTES de derivar df_filtered: las copias de pandas no
-# heredan columnas añadidas después (causó KeyError en las cards hero).
-df["est_alcance_max"] = (
-    df["deezer_rank"].astype(float) * 2.5 + df["deezer_fans"] * 1.5
-).astype(int)
+# Lectura + ML + Cox viven en cargar_dataset() (más abajo), cacheada: los
+# re-renders (filtros, toggles, drill) y las sesiones nuevas reutilizan el
+# DataFrame en vez de repetir predict_proba + predecir_lote + merges.
 
 # ==========================================
 # FASE 3 — SUPERVIVENCIA DE COX: VENTANA DE FIRMA ÓPTIMA
@@ -1255,11 +1344,14 @@ def cargar_modelo_cox():
 
 
 def cargar_y_predecir_cox(data):
-    """Devuelve `data` con prob_breakout_6m (%), mes_optimo_firma y riesgo."""
-    cph = cargar_modelo_cox()
+    """Devuelve `data` con prob_breakout_6m (%), mes_optimo_firma y riesgo.
 
+    Las predicciones por fila se cachean en disco (data/predicciones_cox.json):
+    la primera vez se paga el modelo Cox + lifelines (≈1.3 s) y después cada
+    arranque solo lee el JSON, igual que hace _probabilidades_virales.
+    """
     faltantes = [c for c in COX_FEATURES if c not in data.columns]
-    if cph is not None and faltantes:
+    if faltantes:
         seed_path = os.path.join(
             _REPO_DIR, "ar_dbt_project", "seeds", "deezer_artists_data.csv"
         )
@@ -1272,7 +1364,26 @@ def cargar_y_predecir_cox(data):
         except FileNotFoundError:
             pass
 
-    if cph is None or any(c not in data.columns for c in COX_FEATURES):
+    if any(c not in data.columns for c in COX_FEATURES):
+        data["prob_breakout_6m"] = float("nan")
+        data["mes_optimo_firma"] = pd.NA
+        data["riesgo"] = "—"
+        return data
+
+    claves = [
+        "|".join(_fmt_key(v) for v in valores)
+        for valores in zip(*[data[c] for c in COX_FEATURES])
+    ]
+    cache = _leer_cache_json(_RUTA_COX)
+    if all(k in cache for k in claves):
+        filas = [cache[k] for k in claves]
+        data["prob_breakout_6m"] = [float(f[0]) for f in filas]
+        data["mes_optimo_firma"] = [f[1] if f[1] != "" else pd.NA for f in filas]
+        data["riesgo"] = [f[2] for f in filas]
+        return data
+
+    cph = cargar_modelo_cox()
+    if cph is None:
         data["prob_breakout_6m"] = float("nan")
         data["mes_optimo_firma"] = pd.NA
         data["riesgo"] = "—"
@@ -1282,10 +1393,20 @@ def cargar_y_predecir_cox(data):
     data["prob_breakout_6m"] = (pred["prob_breakout_6m"] * 100).round(1)
     data["mes_optimo_firma"] = pred["mes_optimo_firma"]
     data["riesgo"] = pred["riesgo"]
+
+    nuevo = {}
+    for k, p, m, r in zip(
+        claves,
+        data["prob_breakout_6m"],
+        data["mes_optimo_firma"],
+        data["riesgo"],
+    ):
+        nuevo[k] = [_cache_val(p), _cache_val(m), _cache_val(r)]
+    _guardar_cache_json(_RUTA_COX, nuevo)
     return data
 
-
-df = cargar_y_predecir_cox(df)
+# El dataset completo lo construye cargar_dataset() (cacheada), definida
+# después de _conectar_pais_origen para tener todos los motores a mano.
 
 
 def _conectar_pais_origen(data):
@@ -1308,7 +1429,48 @@ def _conectar_pais_origen(data):
     return data
 
 
-df = _conectar_pais_origen(df)
+@st.cache_data(ttl=300, show_spinner=False)
+def cargar_dataset(ruta_db, firma_db):
+    """Warehouse + ML + Cox + cohorte, cacheado 5 min (firma_db = mtime).
+
+    Es el único camino pesado del arranque: la primera sesión paga la
+    conexión DuckDB, el modelo Cox y las predicciones ML que falten en el
+    caché de disco; después cada re-render y cada sesión nueva reutiliza
+    el DataFrame ya calculado. Si el robot semanal reescribe el archivo,
+    firma_db cambia y se recalcula.
+    """
+    conn = bootstrap_db.get_connection(ruta_db)
+    try:
+        data = pd.read_sql_query("SELECT * FROM artist_scouting_deezer", conn)
+    except Exception as exc:
+        raise RuntimeError(
+            "❌ No se encontraron datos. Ejecuta primero: `dbt seed && dbt run`"
+        ) from exc
+
+    # ---- PREDICCIÓN DE MACHINE LEARNING (caché en disco por artista) ----
+    # Solo carga scikit-learn si data/probabilidades.json no cubre las filas.
+    data["probabilidad_viral"] = _probabilidades_virales(data)
+
+    data = cargar_y_predecir_cox(data)
+    return _conectar_pais_origen(data)
+
+try:
+    df = cargar_dataset(AR_DB, _firma_db)
+except RuntimeError as exc:
+    st.error(str(exc))
+    st.stop()
+
+# Alcance multi-plataforma estimado (factores documentados en el perfil).
+# Debe existir ANTES de derivar df_filtered: las copias de pandas no
+# heredan columnas añadidas después (causó KeyError en las cards hero).
+df["est_alcance_max"] = (
+    df["deezer_rank"].astype(float) * 2.5 + df["deezer_fans"] * 1.5
+).astype(int)
+
+# Datos y predicciones listos: fuera spinner y skeletons (solo si hubo)
+if primera_carga:
+    load_slot.empty()
+    st.session_state.carga_completada = True
 
 # Barra de estado SaaS: indicador de salud + tamaño del universo vigilado
 st.markdown(
@@ -1319,14 +1481,16 @@ st.markdown(
 # ==========================================
 # FORECASTING DE CRECIMIENTO (Módulo 5)
 # ==========================================
-# El gráfico se genera una vez por artista y se cachea 24 h (Prophet o su
-# fallback sklearn solo corren la primera vez que se pide cada artista):
-# cambiar de pestaña ni de artista repeten el entrenamiento.
+# El gráfico se genera una vez por artista y se cachea 24 h (el motor —
+# sklearn por defecto, Prophet con FORECAST_ENGINE=prophet — solo corre la
+# primera vez que se pide cada artista): cambiar de pestaña ni de artista
+# repiten el entrenamiento.
 @st.cache_resource(ttl=86400)
 def cargar_forecast(
     artista: str,
     fans_actuales: int | None = None,
     momentum: float | None = None,
+    motor: str = "sklearn",
 ):
     import sys
 
@@ -1343,7 +1507,6 @@ def cargar_forecast(
         momentum=momentum,
         save_png=False,
     )
-
 
 # ==========================================
 # SIDEBAR — ORDEN OPTIMIZADO (flujo UX: buscar → navegar → refinar)
@@ -1375,7 +1538,6 @@ st.sidebar.divider()
 def _cb_tema():
     guardar_tema("claro" if st.session_state.get("toggle_tema") else "oscuro")
 
-
 st.sidebar.toggle(
     "☀️ Modo claro",
     value=(TEMA_APP == "claro"),
@@ -1384,6 +1546,11 @@ st.sidebar.toggle(
     help="Alterna el tema visual de la app (Cyberpunk oscuro ↔ claro). "
     "La elección queda guardada en data/preferencias.json.",
 )
+
+# Métrica de rendimiento visible: tiempo desde el arranque del script hasta
+# esta línea (imports + auth + dataset). Es lo que el usuario percibe como
+# "la app tardó X segundos en cargar"; en re-renders suele ser <0.1 s.
+st.sidebar.caption(f"⚡ Carga: {(time.perf_counter() - _T0):.2f}s")
 
 # ── Router de vistas (st.session_state: Streamlit no tiene routing nativo).
 # El radio MANDA: si el usuario cambia de vista mientras está en un perfil,
@@ -1803,7 +1970,7 @@ def mostrar_perfil_artista(artist_name):
     ):
         with st.spinner("Componiendo informe (analytics + gira)..."):
             try:
-                st.session_state["pdf_bytes_actual"] = generar_reporte_pdf(artista)
+                st.session_state["pdf_bytes_actual"] = cargar_generador_pdf()(artista)
                 st.session_state["pdf_generado_para"] = nombre_pdf
             except Exception as e:
                 st.session_state.pop("pdf_bytes_actual", None)
@@ -1842,7 +2009,6 @@ def mostrar_perfil_artista(artist_name):
         use_container_width=True,
         on_click=_ir_a_forecasting,
     )
-
 
 # ── DRILL-DOWN (Prioridad 2): la selección de un punto en los gráficos de
 # Scouting abre el perfil de ese artista. El salto se DIFIERE un run: los
@@ -2095,7 +2261,6 @@ if vista_tab == "🆚 Comparador":
 
     st.stop()
 
-
 # ==========================================
 # VISTA 3: TOURING — página independiente (mismo despacho que Forecasting)
 # ==========================================
@@ -2283,11 +2448,18 @@ if vista_tab == "🔮 Forecasting 6M":
     fc_slot = None if fc_en_cache else st.empty()
     if not fc_en_cache:
         show_loading_spinner(
-            f"Entrenando Prophet y proyectando 6 meses para {artista_nombre}...",
+            f"Entrenando el modelo y proyectando 6 meses para {artista_nombre}...",
             slot=fc_slot,
         )
     try:
-        fc = cargar_forecast(artista_nombre, fans_actuales, momentum_viral)
+        fc = cargar_forecast(
+    artista_nombre,
+    fans_actuales,
+    momentum_viral,
+    # Solo forma parte de la clave de caché: si cambia el motor de
+    # forecasting (FORECAST_ENGINE) la figura de 24 h se regenera sola.
+    motor=os.environ.get("FORECAST_ENGINE", "sklearn"),
+)
         st.session_state.forecast_en_cache = artista_nombre
         if fc_slot is not None:
             fc_slot.empty()
@@ -2338,7 +2510,7 @@ if vista_tab == "🔮 Forecasting 6M":
     st.divider()
     st.caption(
         "Data Product desarrollado por David NED Bustamante | Music Data Analyst "
-        "| Forecasting: Prophet (fallback sklearn) · Datos: robot semanal"
+        "| Forecasting: scikit-learn (Prophet opt-in) · Datos: robot semanal"
     )
     st.stop()
 
@@ -2600,33 +2772,14 @@ display_kpi_grid(
 
 st.divider()
 
-# Placeholder en línea (via.placeholder.com murió en 2024): definido ANTES
-# de la función que lo usa (cargar_foto_uri también lo usa la card compacta
-# de paginación vía onerror inline)
+# Placeholder en línea (via.placeholder.com murió en 2024): fallback inline
+# de las fotos (hero y card compacta) cuando la CDN de Deezer falla.
 _SVG_PLACEHOLDER = (
     '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">'
     '<rect width="100" height="100" fill="#1f2a3d"/>'
     '<text x="50" y="55" font-size="30" text-anchor="middle">🎼</text></svg>'
 )
 _SVG_PLACEHOLDER_B64 = base64.b64encode(_SVG_PLACEHOLDER.encode()).decode()
-
-
-# Cache de fotos: un solo request por URL aunque Streamlit re-renderice.
-# Devuelve data URI para embeber la imagen en el HTML de las cards
-# glassmórficas (y fallback local si la CDN falla).
-@st.cache_data(show_spinner=False, ttl=3600)
-def cargar_foto_uri(url):
-    try:
-        response = requests.get(url, timeout=5)
-        response.raise_for_status()
-        img = Image.open(BytesIO(response.content)).convert("RGB")
-        img.thumbnail((160, 160))
-        buf = BytesIO()
-        img.save(buf, format="JPEG", quality=85)
-        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
-    except Exception:
-        return "data:image/svg+xml;base64," + _SVG_PLACEHOLDER_B64
-
 
 # Top Artists con Fotos — cada card es CLICKEABLE: navega al perfil
 # multi-plataforma del artista (router st.session_state). El botón va
@@ -2644,14 +2797,11 @@ for pos, (_, row) in enumerate(top_10.iterrows()):
         st.session_state.artista_seleccionado = row["artist_name"]
         st.session_state.vista_actual = "perfil"
         st.rerun()
-    # Foto cacheada convertida a data URI: un solo request por URL, y el HTML
-    # no depende de que la CDN responda (fallback a imagen placeholder)
-    try:
-        foto_uri = cargar_foto_uri(row["picture_url"])
-    except Exception:
-        foto_uri = None
+    # La foto la descarga el navegador (paralelo, con fallback inline): la
+    # versión anterior la bajaba el servidor en serie y costaba ≈1.7 s de
+    # backend en la primera carga.
     st.markdown(
-        artist_card_html(row, photo_data_uri=foto_uri, index=pos),
+        artist_card_html(row, photo_data_uri=None, index=pos),
         unsafe_allow_html=True,
     )
 
@@ -2745,7 +2895,6 @@ def _drill_o_botones(nombres):
         if st.button(f"👤 {nombre}", key=f"drill_btn_{nombre}"):
             st.session_state["drill_pendiente"] = nombre
             st.rerun()
-
 
 # Top N en barras horizontales (respeta búsqueda y filtros activos)
 top_chart = df_filtered.head(10).iloc[::-1]  # mejor score arriba
@@ -2942,7 +3091,7 @@ if st.sidebar.button(
 ):
     with st.spinner("Componiendo informe ejecutivo..."):
         try:
-            st.session_state["pdf_bytes_sidebar"] = generar_reporte_pdf(top_uno)
+            st.session_state["pdf_bytes_sidebar"] = cargar_generador_pdf()(top_uno)
             st.session_state["pdf_generado_para_sidebar"] = top_uno["artist_name"]
         except Exception as e:
             st.session_state.pop("pdf_bytes_sidebar", None)
@@ -2972,5 +3121,5 @@ if (
 st.divider()
 st.caption(
     "Data Product desarrollado por David NED Bustamante | Music Data Analyst "
-    "| Datos: robot semanal (GitHub Actions) · Predicción: RandomForest · Forecasting: Prophet/sklearn"
+    "| Datos: robot semanal (GitHub Actions) · Predicción: RandomForest · Forecasting: sklearn (Prophet opt-in)"
 )
