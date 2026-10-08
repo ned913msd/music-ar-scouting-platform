@@ -1000,6 +1000,17 @@ PALETA_RECOMENDACION = {
     "⚠️ DESCARTAR": "#64748B",
 }
 
+# Placeholder en línea (via.placeholder.com murió en 2024): fallback inline
+# de las fotos (hero, cards del Comparador y card compacta) cuando la CDN de
+# Deezer falla. Vive aquí (no en la sección de Scouting) para que cualquier
+# vista pueda usarlo: cada corrida termina en st.stop() antes o después.
+_SVG_PLACEHOLDER = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">'
+    '<rect width="100" height="100" fill="#1f2a3d"/>'
+    '<text x="50" y="55" font-size="30" text-anchor="middle">🎼</text></svg>'
+)
+_SVG_PLACEHOLDER_B64 = base64.b64encode(_SVG_PLACEHOLDER.encode()).decode()
+
 
 def estilo_plotly(fig, alto=360, leyenda=False):
     """Fondo transparente + tipografía legible: el gráfico flota sobre el
@@ -2067,6 +2078,148 @@ if vista_tab == "🆚 Comparador":
         )
         colores = ["#0066FF", "#00CED1", "#FF4757"]
 
+        # Colores de texto del bloque (tarjetas + gráficos) según tema activo:
+        # los neón de identidad (#00CED1 y la paleta) solo cambian en claro.
+        _claro = TEMA_APP == "claro"
+        _TXT = "#0f172a" if _claro else "#e2e8f0"
+        _SEC = "#475569" if _claro else "#94a3b8"
+        _VAL = "#0066FF" if _claro else "#00CED1"
+        _HR = "rgba(15,23,42,0.12)" if _claro else "rgba(255,255,255,0.1)"
+
+        # Formateador compartido por las tarjetas KPI y la ficha técnica.
+        def _fmt_ficha(tipo, valor):
+            try:
+                if valor is None or pd.isna(valor):
+                    return "—"
+            except (TypeError, ValueError):
+                pass
+            if tipo == "entero":
+                return f"{int(valor):,}"
+            if tipo == "score":
+                return f"{valor:.1f}"
+            if tipo == "pct":
+                return f"{valor:.1f}%"
+            if tipo == "dec":
+                return f"{float(valor):.3f}"
+            if tipo == "mes":
+                return f"Mes {int(valor)}"
+            if tipo == "si_no":
+                return "Sí" if float(valor) == 1 else "No"
+            return str(valor)
+
+        # ── Tarjetas KPI lado a lado (glassmorphism + foto con fallback) ──
+        # Borde superior con el MISMO color neón que las barras del gráfico:
+        # la identidad visual del artista es consistente en toda la vista.
+        st.markdown("#### 📊 Resumen Ejecutivo Comparativo")
+        cols_kpi = st.columns(len(sub.index))
+        for i, (col_kpi, artista) in enumerate(zip(cols_kpi, sub.index)):
+            color = colores[i % len(colores)]
+            f = sub.loc[artista]
+            score = float(f.get("scouting_score", 0) or 0)
+            fans = f.get("deezer_fans", None)
+            genero = f.get("genero", None) or "—"
+            pais = f.get("pais_origen", None)
+            try:
+                foto = str(f.get("picture_url", "") or "")
+            except (TypeError, ValueError):
+                foto = ""
+            pares = [
+                ("Score", f"{score:.0f}/100"),
+                ("Breakout 6M", _fmt_ficha("pct", f.get("prob_breakout_6m"))),
+                ("Prob. Viralidad", _fmt_ficha("pct", f.get("probabilidad_viral"))),
+                ("Ventana firma", _fmt_ficha("mes", f.get("mes_optimo_firma"))),
+                ("Fans Deezer", _fmt_ficha("entero", fans)),
+            ]
+            filas_html = "".join(
+                f'<div style="display:flex;justify-content:space-between;'
+                f'font-size:0.8rem;color:{_SEC};margin-top:5px;">'
+                f"<span>{et}</span>"
+                f'<strong style="color:{_VAL};">{val}</strong></div>'
+                for et, val in pares
+            )
+            with col_kpi:
+                st.markdown(
+                    f"""
+                    <div class="glass-card" style="border-top: 4px solid {color};
+                            text-align: center; padding: 16px;">
+                        <img src="{foto}"
+                             onerror="this.onerror=null;
+                                      this.src='{_SVG_PLACEHOLDER_B64}'"
+                             style="width: 80px; height: 80px; border-radius: 50%;
+                                    object-fit: cover; margin-bottom: 10px;
+                                    border: 2px solid {color};">
+                        <h4 style="margin: 0; color: {_TXT};">{artista}</h4>
+                        <p style="color: {_SEC}; font-size: 0.85rem;
+                                  margin-top: 5px;">{genero}{' · ' + str(pais) if pais and str(pais) != 'nan' else ''}</p>
+                        <hr style="border-color: {_HR};
+                                   margin: 10px 0;">
+                        {filas_html}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        st.markdown("---")
+
+        # ── Gráfico ejecutivo agrupado (2 paneles): la vista de un vistazo ──
+        fig_resumen = make_subplots(
+            rows=1,
+            cols=2,
+            subplot_titles=(
+                "Scouting Score vs Prob. Breakout 6M (%)",
+                "Fans en Deezer (millones)",
+            ),
+            horizontal_spacing=0.12,
+        )
+        for i, artista in enumerate(sub.index):
+            color = colores[i % len(colores)]
+            score = float(sub.at[artista, "scouting_score"])
+            bo = sub.at[artista, "prob_breakout_6m"]
+            fans_m = float(sub.at[artista, "deezer_fans"]) / 1_000_000
+            fig_resumen.add_trace(
+                go.Bar(
+                    name=artista,
+                    x=["Scouting Score", "Prob. Breakout 6M"],
+                    y=[score, bo if pd.notna(bo) else 0],
+                    text=[
+                        f"{score:.0f}",
+                        f"{bo:.0f}%" if pd.notna(bo) else "—",
+                    ],
+                    textposition="auto",
+                    textfont=dict(color=_TXT),
+                    marker=dict(color=color, line=dict(width=0)),
+                    legendgroup=artista,
+                    showlegend=True,
+                    hovertemplate="%{x}: %{text}<extra></extra>",
+                ),
+                row=1,
+                col=1,
+            )
+            fig_resumen.add_trace(
+                go.Bar(
+                    name=artista,
+                    x=["Fans (M)"],
+                    y=[fans_m],
+                    text=[f"{fans_m:.1f}M"],
+                    textposition="auto",
+                    textfont=dict(color=_TXT),
+                    marker=dict(color=color, line=dict(width=0)),
+                    legendgroup=artista,
+                    showlegend=False,
+                    hovertemplate="%{x}: %{text}<extra></extra>",
+                ),
+                row=1,
+                col=2,
+            )
+        fig_resumen.update_layout(barmode="group", height=380)
+        fig_resumen.update_yaxes(range=[0, 105], row=1, col=1)
+        fig_resumen.update_annotations(font=dict(color=_TXT, size=13))
+        st.plotly_chart(
+            estilo_plotly(fig_resumen, alto=380, leyenda=True),
+            use_container_width=True,
+            key="comparador_resumen",
+        )
+
         # ── 6 paneles (2x3) con la MISMA paleta por artista ──
         fig = make_subplots(
             rows=2,
@@ -2121,7 +2274,7 @@ if vista_tab == "🆚 Comparador":
                         y=tr["y"],
                         text=tr["text"],
                         textposition="outside",
-                        textfont=dict(size=11, color="#e2e8f0"),
+                        textfont=dict(size=11, color=_TXT),
                         marker=dict(
                             color=color,
                             line=dict(width=0),
@@ -2143,7 +2296,7 @@ if vista_tab == "🆚 Comparador":
         fig.update_yaxes(range=[0, 105], row=2, col=2)
         fig.update_yaxes(range=[0, 13], row=2, col=3, dtick=1)
         fig.update_layout(barmode="group")
-        fig.update_annotations(font=dict(color="#e2e8f0", size=13))
+        fig.update_annotations(font=dict(color=_TXT, size=13))
         st.plotly_chart(
             estilo_plotly(fig, alto=640, leyenda=True),
             use_container_width=True,
@@ -2177,26 +2330,6 @@ if vista_tab == "🆚 Comparador":
             ("es_solista", "Es solista", "si_no"),
             ("nombre_corto", "Nombre corto", "si_no"),
         ]
-
-        def _fmt_ficha(tipo, valor):
-            try:
-                if valor is None or pd.isna(valor):
-                    return "—"
-            except (TypeError, ValueError):
-                pass
-            if tipo == "entero":
-                return f"{int(valor):,}"
-            if tipo == "score":
-                return f"{valor:.1f}"
-            if tipo == "pct":
-                return f"{valor:.1f}%"
-            if tipo == "dec":
-                return f"{float(valor):.3f}"
-            if tipo == "mes":
-                return f"Mes {int(valor)}"
-            if tipo == "si_no":
-                return "Sí" if float(valor) == 1 else "No"
-            return str(valor)
 
         ficha = {}
         for col, etiqueta, tipo in COLUMNAS_FICHA:
@@ -2771,15 +2904,6 @@ display_kpi_grid(
 )
 
 st.divider()
-
-# Placeholder en línea (via.placeholder.com murió en 2024): fallback inline
-# de las fotos (hero y card compacta) cuando la CDN de Deezer falla.
-_SVG_PLACEHOLDER = (
-    '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">'
-    '<rect width="100" height="100" fill="#1f2a3d"/>'
-    '<text x="50" y="55" font-size="30" text-anchor="middle">🎼</text></svg>'
-)
-_SVG_PLACEHOLDER_B64 = base64.b64encode(_SVG_PLACEHOLDER.encode()).decode()
 
 # Top Artists con Fotos — cada card es CLICKEABLE: navega al perfil
 # multi-plataforma del artista (router st.session_state). El botón va
