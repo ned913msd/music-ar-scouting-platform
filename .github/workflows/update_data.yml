@@ -30,7 +30,12 @@ jobs:
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
-          pip install pandas requests
+          # aiohttp: la colecta del robot es asíncrona (scripts/
+          # coleccion_asincrona.py — asyncio.gather + semáforo + backoff)
+          # ML + parquet: el export corporativo para Power BI corre los
+          # modelos (RF + Cox) y escribe data/output/dashboard_data.parquet
+          pip install pandas requests duckdb aiohttp scikit-learn joblib \
+            lifelines pyarrow
 
       - name: Ejecutar script de actualización
         run: python scripts/daily_update.py
@@ -46,6 +51,20 @@ jobs:
       # Es la materia prima del modelo de supervivencia (time-to-breakout).
       - name: 📊 Guardar snapshot histórico semanal
         run: python scripts/guardar_snapshot.py
+
+      # ⏱️ Máquina del Tiempo: con SQL (LAG + ROW_NUMBER sobre los CSV de
+      # data/snapshots/) calcula el crecimiento semana a semana por artista
+      # y lo escribe en data/crecimiento_semanal.csv (lo consume el panel
+      # "Máquina del Tiempo" del dashboard).
+      - name: ⏱️ Calcular crecimiento semanal (window functions)
+        run: python scripts/crecimiento_semanal.py
+
+      # Enfoque híbrido: Python es el motor (ML + DuckDB) y Power BI la cara
+      # corporativa. Este export congela el dataset enriquecido (mart scored
+      # + RF viral + Cox + cohorte + crecimiento) en Parquet/CSV para que
+      # Power BI Desktop lo consuma sin tocar Python.
+      - name: 📦 Exportar dataset para Power BI (Parquet + CSV)
+        run: python scripts/exportar_powerbi.py
 
       # Alertas proactivas: repasa el seed fresco y notifica por Telegram los
       # artistas en FIRMAR AHORA (misma fórmula que el mart de dbt). Los

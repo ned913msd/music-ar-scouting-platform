@@ -104,18 +104,21 @@ def _leer_delta_fans(df_previo: pd.DataFrame, df_nuevo: pd.DataFrame) -> pd.Data
 
 
 def actualizar_datos() -> int:
-    print("🤖 Iniciando actualización automática desde Deezer API...\n")
+    print("🤖 Iniciando actualización automática desde Deezer API (async)...\n")
 
     # Importar la lógica probada del extractor (búsqueda robusta + proxy rank)
     sys.path.insert(0, REPO_ROOT)
-    from deezer_data_extractor import buscar_artista_deezer
+    from coleccion_asincrona import obtener_lote
+
+    # Todo el watchlist en paralelo (semáforo + backoff dentro del módulo).
+    # El orden de resultados = orden de ARTISTAS; una excepción en una
+    # posición no tumba el lote (return_exceptions=True en gather).
+    resultados = obtener_lote(ARTISTAS)
 
     filas = []
-    for nombre in ARTISTAS:
-        try:
-            data = buscar_artista_deezer(nombre)
-        except Exception as e:  # API caída / rate limit agotado: no tumbar la corrida por un artista
-            print(f"❌ Error consultando {nombre}: {e}")
+    for nombre, data in zip(ARTISTAS, resultados):
+        if isinstance(data, BaseException):
+            print(f"❌ Error consultando {nombre}: {data}")
             continue
         if data:
             fila = {k: data.get(k) for k in CORE_COLS}

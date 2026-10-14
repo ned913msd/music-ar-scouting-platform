@@ -33,6 +33,8 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from decoradores import medir_rendimiento
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 FEATURES = [
@@ -123,6 +125,7 @@ def mes_cruce_riesgo(S, umbral=UMBRAL_RIESGO):
     return mes, anual
 
 
+@medir_rendimiento
 def predecir_lote(cph, X):
     """Predice para todo un DataFrame con las columnas FEATURES.
 

@@ -39,6 +39,10 @@ dbt_packages/
 !data/*.csv
 !data/snapshots/*.csv
 
+# Power BI: dataset corporativo (Parquet + CSV) del export semanal
+!data/output/*.parquet
+!data/output/*.csv
+
 # dbt telemetría anónima
 .user.yml
 

@@ -81,21 +81,15 @@ def deezer_get(path, **params):
 # ==========================================
 # FUNCIÓN 1: Obtener datos de un artista en Deezer
 # ==========================================
-def buscar_artista_deezer(nombre_artista):
-    """
-    Busca un artista en Deezer y retorna sus datos principales + top track.
-    Métricas 100% reales: nb_fan (fans), rank del artista (0..1M) y rank del
-    track más escuchado.
-    """
-    # Traer 5 candidatos: /search/artist puede devolver homónimos (ej. para
-    # "Quevedo" aparecen otro Quevedo, Creed, Bad Gyal...). Prioridad:
-    # coincidencia exacta de nombre (sin tildes/mayúsculas) y, entre ellos,
-    # el más prominente por fans.
-    results = deezer_get("/search/artist", q=nombre_artista, limit=5)
-    items = results.get("data", [])
-    if not items:
-        return None
+def _elegir_candidato(items, nombre_buscado):
+    """Elige el mejor candidato de /search/artist (lógica PURA, sin red).
 
+    /search/artist devuelve homónimos (para "Quevedo" aparecen otro
+    Quevedo, Creed, Bad Gyal...). Prioridad: coincidencia exacta de nombre
+    (sin tildes/mayúsculas) y, entre ellos, el más prominente por fans.
+    La reutilizan la vía síncrona (buscar_artista_deezer) y la asíncrona
+    (scripts/coleccion_asincrona.py).
+    """
     import unicodedata
 
     def _norm(s):
@@ -104,21 +98,22 @@ def buscar_artista_deezer(nombre_artista):
             if not unicodedata.combining(c)
         ).strip()
 
-    exact = [a for a in items if _norm(a["name"]) == _norm(nombre_artista)]
+    exact = [a for a in items if _norm(a["name"]) == _norm(nombre_buscado)]
     pool = exact or items
-    artist = max(pool, key=lambda a: a.get("nb_fan") or 0)
-    artist_id = artist["id"]
+    return max(pool, key=lambda a: a.get("nb_fan") or 0)
 
-    # Top-10 de tracks → proxy de rank de artista (promedio) + mayor hit
-    top = deezer_get(f"/artist/{artist_id}/top", limit=10)
-    tracks = top.get("data", [])
+
+def _armar_registro(artist, tracks):
+    """Dict normalizado del artista a partir de su ficha + top tracks
+    (lógica PURA, sin red). El rank del artista es el promedio del
+    top-10; el top_track es el #1 (mayor hit)."""
     ranks = [t.get("rank") or 0 for t in tracks]
     artist_rank = round(sum(ranks) / len(ranks)) if ranks else 0
     top_track = tracks[0] if tracks else {}
 
     return {
         "artist_name": artist["name"],
-        "artist_id": artist_id,
+        "artist_id": artist["id"],
         "deezer_fans": artist.get("nb_fan"),
         "deezer_rank": artist_rank,  # proxy real (0..1M), ver header
         "picture_url": (
@@ -131,6 +126,26 @@ def buscar_artista_deezer(nombre_artista):
         "top_track_rank": top_track.get("rank", 0),
         "top_track_duration": top_track.get("duration", 0),
     }
+
+
+def buscar_artista_deezer(nombre_artista):
+    """
+    Busca un artista en Deezer y retorna sus datos principales + top track.
+    Métricas 100% reales: nb_fan (fans), rank del artista (0..1M) y rank del
+    track más escuchado.
+    """
+    # Traer 5 candidatos (ver _elegir_candidato: resolución de homónimos)
+    results = deezer_get("/search/artist", q=nombre_artista, limit=5)
+    items = results.get("data", [])
+    if not items:
+        return None
+
+    artist = _elegir_candidato(items, nombre_artista)
+    artist_id = artist["id"]
+
+    # Top-10 de tracks → proxy de rank de artista (promedio) + mayor hit
+    top = deezer_get(f"/artist/{artist_id}/top", limit=10)
+    return _armar_registro(artist, top.get("data", []))
 
 
 # ==========================================

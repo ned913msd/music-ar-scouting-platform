@@ -7,6 +7,15 @@ pandas>=2.0.0
 numpy>=1.24.0
 duckdb>=1.0.0
 requests>=2.31.0
+
+# Python Avanzado: colecta asíncrona del robot semanal (scripts/
+# coleccion_asincrona.py: asyncio + aiohttp con semáforo y backoff)
+aiohttp>=3.9.0
+
+# Enfoque híbrido Power BI: export corporativo columnar (scripts/
+# exportar_powerbi.py escribe data/output/dashboard_data.parquet)
+pyarrow>=14.0.0
+
 Pillow>=10.0.0
 
 # Extractores de datos reales

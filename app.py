@@ -1342,6 +1342,14 @@ from prediccion_ventana_firma import (
     TIMES as COX_TIMES,
 )
 
+# Capa de consultas SQL: filtros del sidebar y resúmenes GROUP BY/HAVING/CASE
+# se ejecutan en DuckDB (el motor de datos), no con máscaras de pandas.
+import consultas_sql
+
+# Contrato de datos del artista: la lógica de alertas vive en el dataclass
+# (atributos tipados + dispara_alerta), no en máscaras de pandas dispersas.
+from perfiles import iterar_perfiles
+
 _REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -2787,29 +2795,25 @@ else:
                 "⭐ " + " · ".join(_favs[:10]) + (" …" if len(_favs) > 10 else "")
             )
 
-    # Filtrar datos
-    df_filtered = df[
-        (df["ar_recommendation"].isin(recommendation_filter))
-        & (df["scouting_score"] >= min_score)
-        & (df["deezer_fans"] >= rango_fans[0])
-        & (df["deezer_fans"] <= rango_fans[1])
-        & (df["prob_breakout_6m"].fillna(0) >= prob_min)
-    ].sort_values("scouting_score", ascending=False)
-
-    if generos_sel:
-        df_filtered = df_filtered[
-            df_filtered["genero"].astype(str).isin(generos_sel)
-        ]
-    if paises_sel:
-        df_filtered = df_filtered[
-            df_filtered["pais_origen"].astype(str).isin(paises_sel)
-        ]
-    if solo_ventana:
-        df_filtered = df_filtered[df_filtered["mes_optimo_firma"].notna()]
-    if solo_favoritos:
-        df_filtered = df_filtered[
-            df_filtered["artist_name"].isin(st.session_state.get("favoritos", []))
-        ]
+    # Filtrar datos — MOTOR SQL: los widgets del sidebar viajan como
+    # parámetros `?` (WHERE parametrizado) y DuckDB devuelve las filas.
+    # Mismos resultados que el filtrado booleano de pandas, sin montar
+    # máscaras en memoria.
+    df_filtered = consultas_sql.filtrar_artistas(
+        df,
+        conn,
+        recomendaciones=recommendation_filter,
+        score_min=min_score,
+        fans_min=rango_fans[0],
+        fans_max=rango_fans[1],
+        prob_min=prob_min,
+        generos=generos_sel,
+        paises=paises_sel,
+        solo_ventana=solo_ventana,
+        favoritos=(
+            list(st.session_state.get("favoritos", [])) if solo_favoritos else None
+        ),
+    )
 
     # Descripción legible del filtro activo (Prioridad 2): la lleva el
     # export del CSV y la muestra el sidebar.
@@ -2842,35 +2846,39 @@ else:
 # Va ANTES del corte por vacío: si tus filtros dejan 0 filas, las alertas
 # siguen siendo la salida accionable.
 if alertas_on:
-    _mascara_alerta = (
-        (df["scouting_score"] >= alerta_score)
-        & (df["prob_breakout_6m"].fillna(0) >= alerta_prob)
-        & (df["mes_optimo_firma"].fillna(99) <= alerta_mes)
+    # Los umbrales viven en el dataclass (PerfilArtista.dispara_alerta):
+    # una typo en la clave rompe en el constructor, no a mitad del render.
+    _favoritos_alerta = (
+        set(st.session_state.get("favoritos", [])) if alerta_favoritos else None
     )
-    if alerta_favoritos:
-        _mascara_alerta &= df["artist_name"].isin(
-            st.session_state.get("favoritos", [])
-        )
-    alertas = df[_mascara_alerta].sort_values("scouting_score", ascending=False)
+    _alertas = [
+        p
+        for p in iterar_perfiles(df)
+        if p.dispara_alerta(alerta_score, alerta_prob, alerta_mes)
+        and (_favoritos_alerta is None or p.nombre in _favoritos_alerta)
+    ]
+    _alertas.sort(key=lambda p: p.scouting_score, reverse=True)
     _resumen_alerta = (
         f"score ≥ {alerta_score} · prob. breakout ≥ {alerta_prob}% · "
         f"ventana ≤ mes {alerta_mes}"
         + (" · sólo favoritos" if alerta_favoritos else "")
     )
-    if alertas.empty:
+    if not _alertas:
         st.success(f"✅ **Sin alertas**: ningún artista cumple {_resumen_alerta}.")
     else:
-        _nombres_alerta = ", ".join(alertas.head(6)["artist_name"].tolist())
-        _extra = f" (+{len(alertas) - 6})" if len(alertas) > 6 else ""
+        _nombres_alerta = ", ".join(p.nombre for p in _alertas[:6])
+        _extra = f" (+{len(_alertas) - 6})" if len(_alertas) > 6 else ""
         st.warning(
-            f"🔔 **{len(alertas)} artista(s)** disparan tus alertas "
+            f"🔔 **{len(_alertas)} artista(s)** disparan tus alertas "
             f"({_resumen_alerta}): **{_nombres_alerta}**{_extra}"
         )
-        _cols_alerta = st.columns(min(3, len(alertas)))
-        for _i, _nombre in enumerate(alertas.head(3)["artist_name"]):
+        _cols_alerta = st.columns(min(3, len(_alertas)))
+        for _i, _perfil in enumerate(_alertas[:3]):
             with _cols_alerta[_i]:
-                if st.button(f"👤 Ver {_nombre}", key=f"alerta_btn_{_nombre}"):
-                    st.session_state.artista_seleccionado = _nombre
+                if st.button(
+                    f"👤 Ver {_perfil.nombre}", key=f"alerta_btn_{_perfil.nombre}"
+                ):
+                    st.session_state.artista_seleccionado = _perfil.nombre
                     st.session_state.vista_actual = "perfil"
                     st.rerun()
 
@@ -3073,12 +3081,12 @@ with col_scatter:
 with col_genero:
     # El género llega del seed expandido (Fase 1); en un warehouse reconstruido
     # por bootstrap (sin la columna) la gráfica se omite con elegancia.
+    # Los números salen de un GROUP BY + MEDIAN ejecutado por DuckDB
+    # (consultas_sql.resumen_por_genero), no de un groupby de pandas.
     if "genero" in df_filtered.columns:
-        fans_genero = (
-            df_filtered.groupby("genero", as_index=False)["deezer_fans"]
-            .median()
-            .sort_values("deezer_fans", ascending=False)
-        )
+        fans_genero = consultas_sql.resumen_por_genero(conn, df_filtered)[
+            ["genero", "fans_mediana"]
+        ].rename(columns={"fans_mediana": "deezer_fans"})
         fig_genero = px.bar(
             fans_genero,
             x="deezer_fans",
@@ -3093,6 +3101,78 @@ with col_genero:
             use_container_width=True,
             config={"displayModeBar": False},
             key="chart_genero_fans",
+        )
+
+# ==========================================
+# RESUMEN SQL POR GÉNERO (GROUP BY · HAVING · CASE) + MÁQUINA DEL TIEMPO
+# ==========================================
+if "genero" in df_filtered.columns:
+    resumen_genero = consultas_sql.resumen_por_genero(
+        conn, df_filtered, min_artistas=5
+    )
+    st.markdown(
+        "#### 🧠 Resumen Ejecutivo por Género (SQL: GROUP BY · HAVING · CASE)"
+    )
+    st.dataframe(resumen_genero, use_container_width=True, hide_index=True)
+    st.caption(
+        "`SUM(CASE WHEN prob_breakout_6m >= 50 THEN 1 ELSE 0 END)` cuenta "
+        "firma inmediata y `HAVING COUNT(artist_name) > 5` deja solo los "
+        "géneros con suficiente data. La consulta corre en DuckDB, no en pandas."
+    )
+
+# ── MÁQUINA DEL TIEMPO: LAG() semana a semana sobre data/snapshots/*.csv ──
+st.markdown("---")
+st.markdown("#### ⏱️ Máquina del Tiempo — crecimiento semana a semana")
+_ruta_crecimiento = os.path.join(_REPO_DIR, "data", "crecimiento_semanal.csv")
+if not os.path.exists(_ruta_crecimiento):
+    st.info(
+        "⏳ Todavía no hay histórico: el primer snapshot es la línea base. "
+        "Cada lunes el robot guarda uno nuevo y `LAG()` rellena la semana "
+        "anterior (generado por `scripts/crecimiento_semanal.py`)."
+    )
+else:
+    crecimiento = pd.read_csv(_ruta_crecimiento)
+    _con_historial = (
+        crecimiento[crecimiento["crecimiento_pct"].notna()]
+        if "crecimiento_pct" in crecimiento.columns
+        else crecimiento.iloc[0:0]
+    )
+    if _con_historial.empty:
+        st.info(
+            f"⏳ {len(crecimiento)} artistas en línea base "
+            f"({crecimiento['snapshot_date'].iloc[0] if 'snapshot_date' in crecimiento.columns and len(crecimiento) else '—'}). "
+            "Con un solo snapshot, `LAG(deezer_fans)` devuelve NULL: la "
+            "comparación arranca el próximo lunes."
+        )
+    else:
+        _top_crec = (
+            _con_historial.reindex(
+                _con_historial["crecimiento_pct"].abs().sort_values(ascending=False).index
+            )
+            .head(10)
+            .sort_values("crecimiento_pct")
+        )
+        fig_crec = px.bar(
+            _top_crec,
+            x="crecimiento_pct",
+            y="artist_name",
+            orientation="h",
+            title="Top 10 Δ% de fans vs. semana anterior",
+            color_discrete_sequence=[NEON_AZUL],
+            hover_data=["deezer_fans", "fans_semana_anterior", "tendencia"],
+        )
+        fig_crec.update_yaxes(title=None)
+        fig_crec.update_xaxes(title="% crecimiento semanal")
+        st.plotly_chart(
+            estilo_plotly(fig_crec),
+            use_container_width=True,
+            config={"displayModeBar": False},
+            key="chart_crecimiento_semanal",
+        )
+        st.caption(
+            "`LAG(deezer_fans) OVER (PARTITION BY artist_name ORDER BY "
+            "snapshot_date)` — funciones de ventana sobre los CSV de "
+            "data/snapshots/."
         )
 
 # ==========================================
