@@ -59,6 +59,14 @@ jobs:
       - name: ⏱️ Calcular crecimiento semanal (window functions)
         run: python scripts/crecimiento_semanal.py
 
+      # 🕵️ Radar de Fraude: Isolation Forest (imputer + scaler + modelo en
+      # UN pipeline) sobre el mart scored. Escribe data/anomalias.csv
+      # (badge de autenticidad + vista Radar del dashboard) y guarda el
+      # pipeline en models/. Debe ir ANTES del export para que Parquet/CSV
+      # de Power BI lleven las columnas de autenticidad.
+      - name: 🕵️ Detectar anomalías (Isolation Forest)
+        run: python scripts/detectar_anomalias.py
+
       # Enfoque híbrido: Python es el motor (ML + DuckDB) y Power BI la cara
       # corporativa. Este export congela el dataset enriquecido (mart scored
       # + RF viral + Cox + cohorte + crecimiento) en Parquet/CSV para que

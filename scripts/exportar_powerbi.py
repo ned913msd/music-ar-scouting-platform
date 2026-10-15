@@ -51,6 +51,7 @@ RUTA_PARQUET = os.path.join(DIR_SALIDA, "dashboard_data.parquet")
 RUTA_CSV = os.path.join(DIR_SALIDA, "dashboard_data.csv")
 RUTA_COHORTE = os.path.join(REPO_ROOT, "data", "cohort_table.csv")
 RUTA_CRECIMIENTO = os.path.join(REPO_ROOT, "data", "crecimiento_semanal.csv")
+RUTA_ANOMALIAS = os.path.join(REPO_ROOT, "data", "anomalias.csv")
 RUTA_SEED = os.path.join(
     REPO_ROOT, "ar_dbt_project", "seeds", "deezer_artists_data.csv"
 )
@@ -66,6 +67,9 @@ COLS_CRECIMIENTO = [
     "snapshots_en_historial",
     "tendencia",
 ]
+
+# Radar de Fraude (Isolation Forest): artist_name va aparte para el merge
+COLS_ANOMALIAS = ["artist_name", "anomalia", "score_anomalia", "nivel_riesgo"]
 
 
 def _cargar_universo() -> pd.DataFrame:
@@ -144,6 +148,22 @@ def _merge_crecimiento(data: pd.DataFrame) -> pd.DataFrame:
     return data.merge(crec, on="artist_name", how="left")
 
 
+def _merge_anomalias(data: pd.DataFrame) -> pd.DataFrame:
+    """Radar de Fraude: columnas del Isolation Forest si la CI ya lo corrió.
+
+    En la orquestación semanal detectar_anomalias.py corre ANTES que este
+    export, así que el Parquet corporativo siempre lleva el semáforo de
+    autenticidad. Local, si nadie entrenó el modelo el export sale sin
+    esas columnas (Power BI las ignora: no rompe el layout).
+    """
+    if not os.path.exists(RUTA_ANOMALIAS):
+        return data
+    anom = pd.read_csv(RUTA_ANOMALIAS, usecols=COLS_ANOMALIAS)
+    return data.merge(
+        anom.drop_duplicates("artist_name"), on="artist_name", how="left"
+    )
+
+
 def _bandera_firma(data: pd.DataFrame) -> pd.Series:
     """es_firma_inmediata vía el dataclass (mismo contrato que las alertas)."""
     return pd.Series(
@@ -162,6 +182,7 @@ def exportar_powerbi() -> pd.DataFrame:
     data = pd.concat([data, _predicciones_cox(data)], axis=1)
     data = _merge_pais(data)
     data = _merge_crecimiento(data)
+    data = _merge_anomalias(data)
     data["es_firma_inmediata"] = _bandera_firma(data)
     data = data.sort_values("scouting_score", ascending=False).reset_index(
         drop=True
@@ -179,6 +200,9 @@ def exportar_powerbi() -> pd.DataFrame:
     n_firma = int(data["es_firma_inmediata"].sum())
     n_ventana = int(data["mes_optimo_firma"].notna().sum())
     print(f"🔥 es_firma_inmediata: {n_firma} · con ventana de firma: {n_ventana}")
+    if "anomalia" in data.columns:
+        n_anom = int((data["anomalia"] == -1).sum())
+        print(f"🕵️ Radar de Fraude: {n_anom} anomalías en el dataset")
     return data
 
 

@@ -836,6 +836,9 @@ def artist_card_html(row, photo_data_uri=None, index=0):
         inline=True,
     )
     cox_html = ventana_firma_cox_html(row)
+    # Semáforo de autenticidad (Isolation Forest): pill junto al insight
+    nivel_riesgo = row.get("nivel_riesgo", "—")
+    color_anomalia = PALETA_ANOMALIA.get(nivel_riesgo, "#64748B")
     estrella = (
         " ⭐" if row["artist_name"] in st.session_state.get("favoritos", []) else ""
     )
@@ -851,6 +854,9 @@ def artist_card_html(row, photo_data_uri=None, index=0):
                 {cox_html}
                 <p class="artist-track">🎵 Top Track: {row['top_track_name']}</p>
                 <div class="insight-pill"><span>💡 {row['strategic_insight']}</span></div>
+                <div style="margin-top: 8px;">
+                    <span title="Semáforo de autenticidad · Isolation Forest" style="background-color: {color_anomalia}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">{nivel_riesgo}</span>
+                </div>
             </div>
             <div style="text-align: right;">
                 <div class="stat-block">
@@ -888,6 +894,15 @@ def artist_card_compacto_html(row, index=0):
     estrella = (
         " ⭐" if row["artist_name"] in st.session_state.get("favoritos", []) else ""
     )
+    # Semáforo de autenticidad en pill compacta (misma paleta que la hero)
+    nivel_riesgo = row.get("nivel_riesgo", "—")
+    color_anomalia = PALETA_ANOMALIA.get(nivel_riesgo, "#64748B")
+    autenticidad = (
+        f'<span title="Semáforo de autenticidad · Isolation Forest" '
+        f'style="background-color: {color_anomalia}; color: white; '
+        f'padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; '
+        f'font-weight: 600;">{nivel_riesgo}</span>'
+    )
     return f"""
     <div class="neumorphic-card artist-card" style="animation-delay: {index * 0.05:.2f}s; padding: 15px; margin-bottom: 15px;">
         <div style="display: flex; gap: 14px; align-items: center;">
@@ -900,7 +915,7 @@ def artist_card_compacto_html(row, index=0):
                 <p class="artist-meta" style="margin: 4px 0 0;">
                     Score: <strong class="score-value">{row['scouting_score']:.0f}/100</strong> · 🎧 {fans} fans
                 </p>
-                <div style="margin-top: 6px;">{badge}</div>
+                <div style="margin-top: 6px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">{badge}{autenticidad}</div>
                 {cox_html}
             </div>
         </div>
@@ -998,6 +1013,15 @@ PALETA_RECOMENDACION = {
     "🔥 FIRMAR AHORA": "#FF4757",
     "👀 OBSERVAR": "#FFA502",
     "⚠️ DESCARTAR": "#64748B",
+}
+
+# Semáforo de autenticidad (Isolation Forest): badge en las cards y colores
+# del scatter del Radar de Fraude. "—" = artista aún sin puntuar (gris).
+PALETA_ANOMALIA = {
+    "🔴 ALERTA": "#EF4444",
+    "🟡 Revisar": "#F59E0B",
+    "🟢 Normal": "#10B981",
+    "—": "#64748B",
 }
 
 # Placeholder en línea (via.placeholder.com murió en 2024): fallback inline
@@ -1448,6 +1472,57 @@ def _conectar_pais_origen(data):
     return data
 
 
+def _merge_anomalias(data):
+    """Semáforo de autenticidad (Isolation Forest) desde data/anomalias.csv.
+
+    El entrenamiento pesado vive en scripts/detectar_anomalias.py y corre
+    en la CI semanal: el dashboard solo fusiona el artefacto (cero imports
+    de scikit-learn en el arranque — el modelo RF ya demostró lo que
+    cuesta cargar sklearn por sesión). Si el archivo no existe, las
+    columnas quedan en neutro ("—") y la vista Radar pide ejecutar el
+    script. Los cortes (corte_alerta/corte_revisar) viajan en el mismo
+    CSV para que el Radar dibuje las líneas donde el modelo decidió.
+    Igual que pais_origen, debe correr ANTES de df_filtered: las copias
+    de pandas no heredan columnas añadidas después.
+    """
+    try:
+        anomalias = pd.read_csv(
+            os.path.join(_REPO_DIR, "data", "anomalias.csv")
+        ).drop_duplicates("artist_name")
+        columnas = [
+            c
+            for c in (
+                "anomalia",
+                "score_anomalia",
+                "nivel_riesgo",
+                "corte_alerta",
+                "corte_revisar",
+            )
+            if c in anomalias.columns
+        ]
+        data = data.merge(
+            anomalias[["artist_name"] + columnas], on="artist_name", how="left"
+        )
+    except (FileNotFoundError, ValueError, pd.errors.EmptyDataError):
+        pass
+
+    # Esquema completo aunque el CSV falte (o sea de una versión previa)
+    neutros = {
+        "anomalia": 1,
+        "score_anomalia": float("nan"),
+        "nivel_riesgo": "—",
+        "corte_alerta": float("nan"),
+        "corte_revisar": float("nan"),
+    }
+    for columna, neutro in neutros.items():
+        if columna not in data.columns:
+            data[columna] = neutro
+    # Artistas nuevos (todavía sin etiqueta) → gris "sin puntuar"
+    data["anomalia"] = data["anomalia"].fillna(1).astype(int)
+    data["nivel_riesgo"] = data["nivel_riesgo"].fillna("—")
+    return data
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def cargar_dataset(ruta_db, firma_db):
     """Warehouse + ML + Cox + cohorte, cacheado 5 min (firma_db = mtime).
@@ -1485,6 +1560,10 @@ except RuntimeError as exc:
 df["est_alcance_max"] = (
     df["deezer_rank"].astype(float) * 2.5 + df["deezer_fans"] * 1.5
 ).astype(int)
+
+# Radar de Fraude: columnas de anomalía (anomalia, score_anomalia,
+# nivel_riesgo) antes de df_filtered, para que las cards hereden el badge.
+df = _merge_anomalias(df)
 
 # Datos y predicciones listos: fuera spinner y skeletons (solo si hubo)
 if primera_carga:
@@ -1545,7 +1624,13 @@ st.sidebar.divider()
 st.sidebar.header("🗂️ Vistas")
 vista_tab = st.sidebar.radio(
     "Selecciona la vista:",
-    options=["🎯 Scouting", "🔮 Forecasting 6M", "🌍 Touring", "🆚 Comparador"],
+    options=[
+        "🎯 Scouting",
+        "🔮 Forecasting 6M",
+        "🌍 Touring",
+        "🆚 Comparador",
+        "🕵️ Radar de Fraude",
+    ],
     label_visibility="collapsed",
     key="vista_tab",
 )
@@ -2045,6 +2130,111 @@ if _drill:
 # transitorio encima de la navegación; cambiar el radio lo cierra)
 if st.session_state.vista_actual == "perfil" and st.session_state.artista_seleccionado:
     mostrar_perfil_artista(st.session_state.artista_seleccionado)
+    st.stop()
+
+# ==========================================
+# VISTA 5: RADAR DE FRAUDE — detección de anomalías (Isolation Forest)
+# Semáforo de autenticidad a nivel de universo: scatter score de anomalía
+# vs scouting score con los umbrales -0.2/-0.5 como líneas de corte, más
+# la tabla de revisión manual. Las etiquetas viene de data/anomalias.csv
+# (entrena scripts/detectar_anomalias.py; corre en la CI semanal).
+# ==========================================
+if vista_tab == "🕵️ Radar de Fraude":
+    st.subheader("🕵️ Radar de Detección de Anomalías")
+    st.markdown(
+        "**Isolation Forest** sobre fans, rank, conversión de oyentes a "
+        "fans y scouting score: artistas con patrones de crecimiento "
+        "inusuales que pueden indicar streams falsos (bots), viralidad "
+        "atípica o — al contrario — crecimiento orgánico genuino que "
+        "merece revisión manual."
+    )
+
+    if df["score_anomalia"].notna().sum() == 0:
+        st.info(
+            "ℹ️ Aún no hay etiquetas de anomalías. Ejecuta el entrenamiento: "
+            "`python scripts/detectar_anomalias.py` (la CI semanal lo corre "
+            "automático y renueva data/anomalias.csv)."
+        )
+        st.stop()
+
+    df_anomalias = df[df["anomalia"] == -1].copy()
+
+    kpi_total, kpi_anom, kpi_pct = st.columns(3)
+    kpi_total.metric("👥 Universo analizado", f"{len(df)}")
+    kpi_anom.metric("🔴 Anomalías detectadas", f"{len(df_anomalias)}")
+    kpi_pct.metric("📈 % del universo", f"{len(df_anomalias) / len(df) * 100:.1f}%")
+
+    if len(df_anomalias) == 0:
+        st.success("✅ No se detectaron anomalías en el dataset actual.")
+        st.stop()
+
+    st.warning(
+        f"⚠️ Se detectaron **{len(df_anomalias)} artistas** con patrones "
+        "inusuales: revisar manualmente antes de destinar presupuesto de "
+        "promoción."
+    )
+
+    fig = px.scatter(
+        df,
+        x="scouting_score",
+        y="score_anomalia",
+        color="nivel_riesgo",
+        hover_name="artist_name",
+        hover_data={"deezer_fans": ":,", "probabilidad_viral": ":.1f"},
+        title="Score de anomalía vs Scouting Score (más abajo = más sospechoso)",
+        color_discrete_map=PALETA_ANOMALIA,
+    )
+    # Cortes dinámicos: el semáforo se decidió en el train con estas
+    # líneas (no con -0.5/-0.2 fijos: la escala del modelo varía por dataset)
+    _corte_revisar = df["corte_revisar"].dropna()
+    _corte_alerta = df["corte_alerta"].dropna()
+    if not _corte_revisar.empty:
+        fig.add_hline(
+            y=float(_corte_revisar.iloc[0]),
+            line_dash="dot",
+            line_color="#F59E0B",
+            annotation_text="Revisar",
+            annotation_position="top left",
+        )
+    if not _corte_alerta.empty:
+        fig.add_hline(
+            y=float(_corte_alerta.iloc[0]),
+            line_dash="dot",
+            line_color="#EF4444",
+            annotation_text="Alerta",
+            annotation_position="top left",
+        )
+    estilo_plotly(fig, alto=460, leyenda=True)
+    st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
+
+    st.markdown("### 🔍 Lista de artistas con anomalías")
+    tabla = (
+        df_anomalias[
+            [
+                "artist_name",
+                "genero",
+                "deezer_fans",
+                "scouting_score",
+                "probabilidad_viral",
+                "score_anomalia",
+                "nivel_riesgo",
+            ]
+        ]
+        .sort_values("score_anomalia")
+        .reset_index(drop=True)
+    )
+    st.dataframe(tabla, use_container_width=True, hide_index=True)
+    _leyenda = (
+        f"score_anomalia: cuanto más negativo, más aislado el artista en el "
+        f"espacio de features (mayor sospecha)."
+    )
+    if not _corte_alerta.empty and not _corte_revisar.empty:
+        _leyenda += (
+            f" Cortes de esta corrida: 🔴 ALERTA ≤ {_corte_alerta.iloc[0]:.3f} · "
+            f"🟡 Revisar ≤ {_corte_revisar.iloc[0]:.3f}."
+        )
+    st.caption(_leyenda)
+
     st.stop()
 
 # ==========================================
