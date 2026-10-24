@@ -57,3 +57,9 @@ streamlit-folium>=0.24
 # `times=` de 0.30 (en versiones previas se llamaba `timeline=`).
 lifelines>=0.30.0,<0.31
 matplotlib>=3.7.0
+
+# Gráficos del módulo Publishing Intelligence (src/publishing_analyzer.py):
+# el script importa seaborn al cargar y lo usa en visualizar_escenarios,
+# así que debe estar en runtime para que `python src/publishing_analyzer.py`
+# funcione con un simple `pip install -r requirements.txt`
+seaborn>=0.13.0
