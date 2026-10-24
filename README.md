@@ -253,6 +253,404 @@ El workflow **`.github/workflows/update_data.yml`** despierta cada lunes 13:00 U
 - **Estacionalidad anual adaptativa**: solo se activa con ≥24 meses de historial — con menos, Prophet no puede identificar el ciclo anual y produce valles falsos en la proyección (defecto detectado y corregido en ejecución real).
 - Resultado verificado para KAROL G: 6.0M → **7.34M fans (+22.3%)** a 6 meses; el notebook compara motores: regresión lineal (sklearn) +15.5% vs Prophet +22.3% — Prophet captura el momentum no lineal del crecimiento.
 
+## 🎵 Publishing Intelligence: Análisis de Regalías Editoriales 2028-2032
+
+### 📊 Contexto del Problema
+
+La industria musical enfrenta una disputa crítica sobre las tasas de regalías editoriales (publishing) para el período 2028-2032 en Estados Unidos. Tres posiciones compiten:
+
+- **Amazon Music**: Propone reducir la tasa al **13.4%**
+- **Spotify/Apple/Google**: Proponen mantener la tasa actual del **15.35%**
+- **NMPA/NSAI (Compositores)**: Proponen aumentar la tasa al **20%**
+
+Esta diferencia, que parece pequeña en porcentajes, representa **miles de millones de dólares** en juego para compositores, editores, sellos e inversionistas.
+
+---
+
+### 🎯 Objetivo de Este Análisis
+
+Este proyecto demuestra cómo un **Music Data Analyst** puede cuantificar el impacto de estos escenarios regulatorios en:
+
+1. Los ingresos de compositores y editores
+2. El valor de catálogos musicales
+3. Las decisiones de inversión en la industria
+
+---
+
+### 🧮 Modelo de Cálculo de Regalías
+
+#### Fórmula Base
+
+```
+Regalía_Publishing = (Streams_Totales × Tasa_Por_Stream) × Tasa_Publishing
+```
+
+Donde:
+- `Streams_Totales`: Número total de streams en el período
+- `Tasa_Por_Stream`: Pago promedio por stream (varía por plataforma)
+- `Tasa_Publishing`: Porcentaje asignado a compositores/editores (13.4%, 15.35%, o 20%)
+
+---
+
+### 💻 Implementación en Python
+
+#### 1. Configuración Inicial
+
+```python
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from typing import Dict, List, Tuple
+
+# Configuración de estilos
+plt.style.use('seaborn-darkgrid')
+sns.set_palette("husl")
+```
+
+#### 2. Clase Principal: PublishingAnalyzer
+
+```python
+class PublishingAnalyzer:
+    """
+    Analizador de impacto de tasas de publishing en ingresos y valor de catálogo.
+    """
+    
+    def __init__(self):
+        self.scenarios = {
+            'Amazon Music (13.4%)': 0.134,
+            'Status Quo (15.35%)': 0.1535,
+            'NMPA/NSAI (20%)': 0.20
+        }
+        
+        # Tasas promedio por stream (USD) - datos estimados 2024
+        self.payout_rates = {
+            'Spotify': 0.004,
+            'Apple Music': 0.007,
+            'Amazon Music': 0.004,
+            'YouTube Music': 0.002,
+            'Deezer': 0.006
+        }
+    
+    def calcular_regalias(
+        self,
+        streams_mensuales: int,
+        plataforma: str = 'Spotify',
+        años_proyeccion: int = 5
+    ) -> pd.DataFrame:
+        """
+        Calcula regalías de publishing bajo diferentes escenarios.
+        
+        Args:
+            streams_mensuales: Número de streams por mes
+            plataforma: Plataforma de streaming principal
+            años_proyeccion: Años de proyección (2028-2032)
+        
+        Returns:
+            DataFrame con proyecciones por escenario
+        """
+        tasa_stream = self.payout_rates.get(plataforma, 0.004)
+        
+        resultados = []
+        
+        for año in range(2028, 2028 + años_proyeccion):
+            # Asumimos crecimiento del 5% anual en streams
+            factor_crecimiento = (1.05) ** (año - 2028)
+            streams_anuales = streams_mensuales * 12 * factor_crecimiento
+            
+            for escenario, tasa in self.scenarios.items():
+                regalia_anual = streams_anuales * tasa_stream * tasa
+                
+                resultados.append({
+                    'Año': año,
+                    'Escenario': escenario,
+                    'Tasa_Publishing': tasa,
+                    'Streams_Anuales': int(streams_anuales),
+                    'Regalía_Anual_USD': round(regalia_anual, 2)
+                })
+        
+        return pd.DataFrame(resultados)
+    
+    def calcular_valor_catalogo(
+        self,
+        streams_mensuales: int,
+        plataforma: str = 'Spotify',
+        años_proyeccion: int = 5,
+        multiplicador_valor: float = 10.0
+    ) -> Dict[str, float]:
+        """
+        Calcula el valor estimado del catálogo bajo cada escenario.
+        
+        Args:
+            multiplicador_valor: Múltiplo de ingresos anuales para valoración
+        """
+        df = self.calcular_regalias(streams_mensuales, plataforma, años_proyeccion)
+        
+        valores = {}
+        for escenario in self.scenarios.keys():
+            df_escenario = df[df['Escenario'] == escenario]
+            ingresos_totales = df_escenario['Regalía_Anual_USD'].sum()
+            valores[escenario] = round(ingresos_totales * multiplicador_valor, 2)
+        
+        return valores
+    
+    def analizar_impacto_relativo(
+        self,
+        streams_mensuales: int,
+        plataforma: str = 'Spotify'
+    ) -> pd.DataFrame:
+        """
+        Analiza el impacto relativo entre escenarios.
+        """
+        df = self.calcular_regalias(streams_mensuales, plataforma)
+        
+        # Calcular diferencia vs Status Quo
+        status_quo = df[df['Escenario'] == 'Status Quo (15.35%)']['Regalía_Anual_USD'].values
+        
+        impacto = []
+        for año in range(2028, 2033):
+            for escenario in self.scenarios.keys():
+                if escenario != 'Status Quo (15.35%)':
+                    regalia = df[(df['Año'] == año) & (df['Escenario'] == escenario)]['Regalía_Anual_USD'].values[0]
+                    sq = status_quo[año - 2028]
+                    diferencia = regalia - sq
+                    porcentaje = (diferencia / sq) * 100
+                    
+                    impacto.append({
+                        'Año': año,
+                        'Escenario': escenario,
+                        'Diferencia_USD': round(diferencia, 2),
+                        'Impacto_Porcentual': round(porcentaje, 2)
+                    })
+        
+        return pd.DataFrame(impacto)
+```
+
+#### Ejemplo Práctico: Análisis de un Artista Emergente
+
+**Caso de Estudio** — Imaginemos un artista independiente con:
+
+- 100,000 streams mensuales en Spotify
+- 5 años de proyección (2028-2032)
+
+```python
+# Inicializar analizador
+analyzer = PublishingAnalyzer()
+
+# Calcular regalías
+df_regalias = analyzer.calcular_regalias(
+    streams_mensuales=100000,
+    plataforma='Spotify',
+    años_proyeccion=5
+)
+
+print("📊 PROYECCIÓN DE REGALÍAS (2028-2032)")
+print("=" * 60)
+print(df_regalias.to_string(index=False))
+```
+
+**Resultado Esperado**
+
+```
+📊 PROYECCIÓN DE REGALÍAS (2028-2032)
+============================================================
+  Año              Escenario  Tasa_Publishing  Streams_Anuales  Regalía_Anual_USD
+ 2028  Amazon Music (13.4%)          0.134          1200000            643.20
+ 2028    Status Quo (15.35%)          0.1535         1200000            736.80
+ 2028       NMPA/NSAI (20%)          0.2000         1200000            960.00
+ 2029  Amazon Music (13.4%)          0.134          1260000            675.36
+ 2029    Status Quo (15.35%)          0.1535         1260000            773.64
+ 2029       NMPA/NSAI (20%)          0.2000         1260000           1008.00
+...
+```
+
+#### Visualización del Impacto
+
+```python
+def visualizar_escenarios(df_regalias: pd.DataFrame):
+    """
+    Genera visualización comparativa de escenarios.
+    """
+    plt.figure(figsize=(12, 6))
+    
+    sns.lineplot(
+        data=df_regalias,
+        x='Año',
+        y='Regalía_Anual_USD',
+        hue='Escenario',
+        marker='o',
+        linewidth=2
+    )
+    
+    plt.title(
+        'Impacto de Tasas de Publishing en Regalías Anuales\n'
+        'Artista con 100K streams/mes en Spotify (2028-2032)',
+        fontsize=14,
+        fontweight='bold'
+    )
+    plt.xlabel('Año', fontsize=12)
+    plt.ylabel('Regalía Anual (USD)', fontsize=12)
+    plt.legend(title='Escenario', bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig('publishing_scenarios.png', dpi=300, bbox_inches='tight')
+    plt.show()
+    
+    print("✅ Gráfico guardado como 'publishing_scenarios.png'")
+
+# Generar visualización
+visualizar_escenarios(df_regalias)
+```
+
+#### Análisis de Valor de Catálogo
+
+**Caso**: Sello con 500 canciones (promedio 50K streams/mes cada una)
+
+```python
+# Parámetros del catálogo
+num_canciones = 500
+streams_por_cancion = 50000  # mensuales
+streams_totales = num_canciones * streams_por_cancion
+
+# Calcular valor del catálogo
+valores_catalogo = analyzer.calcular_valor_catalogo(
+    streams_mensuales=streams_totales,
+    plataforma='Spotify',
+    años_proyeccion=5,
+    multiplicador_valor=10.0  # Múltiplo estándar en la industria
+)
+
+print("\n💰 VALOR ESTIMADO DEL CATÁLOGO (5 años)")
+print("=" * 60)
+for escenario, valor in valores_catalogo.items():
+    print(f"{escenario}: ${valor:,.2f} USD")
+
+# Calcular diferencia entre escenarios
+valor_max = max(valores_catalogo.values())
+valor_min = min(valores_catalogo.values())
+diferencia = valor_max - valor_min
+
+print(f"\n⚠️ Diferencia entre mejor y peor escenario: ${diferencia:,.2f} USD")
+print(f"   Esto representa un {(diferencia/valor_min)*100:.1f}% de variación en el valor del catálogo")
+```
+
+**Resultado**
+
+```
+💰 VALOR ESTIMADO DEL CATÁLOGO (5 años)
+============================================================
+Amazon Music (13.4%): $8,885,215.10 USD
+Status Quo (15.35%): $10,178,212.80 USD
+NMPA/NSAI (20%): $13,261,515.00 USD
+
+⚠️ Diferencia entre mejor y peor escenario: $4,376,299.90 USD
+   Esto representa un 49.3% de variación en el valor del catálogo
+```
+
+### 🎯 Implicaciones para la Industria
+
+#### 1. Para Compositores y Editores
+
+- Escenario Amazon (13.4%): Pérdida del **12.7%** en ingresos vs status quo
+- Escenario NMPA (20%): Ganancia del **30.3%** en ingresos vs status quo
+
+#### 2. Para Sellos e Inversionistas
+
+- El valor de los catálogos puede variar hasta **49%** dependiendo del resultado regulatorio
+- Esto afecta decisiones de M&A (fusiones y adquisiciones) de catálogos musicales
+
+#### 3. Para Artistas Independientes
+
+- Los artistas que componen sus propias canciones tienen doble fuente de ingresos (master + publishing)
+- En el escenario favorable, el publishing puede representar hasta **20%** de sus ingresos totales
+
+### 🔗 Integración con A&R Scouting Command Center
+
+Este módulo de Publishing Intelligence se integra con mi plataforma principal de A&R para proporcionar:
+
+- **Scoring de Artistas con Contexto de Publishing**: No solo predecir viralidad, sino también el valor de publishing a largo plazo
+- **Recomendaciones de Firma**: Considerar el potencial de publishing en las decisiones de A&R
+- **Proyecciones de ROI**: Calcular el retorno de inversión incluyendo ingresos de publishing
+
+#### Ejemplo de Integración
+
+```python
+class ARScoutingWithPublishing:
+    """
+    Extensión del A&R Scouting Command Center con análisis de publishing.
+    """
+    
+    def __init__(self):
+        self.publishing_analyzer = PublishingAnalyzer()
+    
+    def evaluar_artista(
+        self,
+        nombre: str,
+        streams_mensuales: int,
+        porcentaje_composicion: float = 1.0
+    ) -> Dict:
+        """
+        Evalúa un artista considerando publishing.
+        
+        Args:
+            porcentaje_composicion: % de canciones que el artista compuso (0-1)
+        """
+        # Proyección de publishing (solo aplica al % que compone)
+        streams_publishing = int(streams_mensuales * porcentaje_composicion)
+        
+        valores = self.publishing_analyzer.calcular_valor_catalogo(
+            streams_mensuales=streams_publishing,
+            años_proyeccion=5
+        )
+        
+        return {
+            'artista': nombre,
+            'valor_catalogo_pesimista': valores['Amazon Music (13.4%)'],
+            'valor_catalogo_base': valores['Status Quo (15.35%)'],
+            'valor_catalogo_optimista': valores['NMPA/NSAI (20%)'],
+            'riesgo_regulatorio': 'ALTO' if porcentaje_composicion > 0.5 else 'MEDIO'
+        }
+
+# Ejemplo de uso
+scouting = ARScoutingWithPublishing()
+evaluacion = scouting.evaluar_artista(
+    nombre='Artista Emergente X',
+    streams_mensuales=500000,
+    porcentaje_composicion=0.8  # Compone el 80% de sus canciones
+)
+
+print("\n🎯 EVALUACIÓN DE ARTISTA CON PUBLISHING")
+print("=" * 60)
+for key, value in evaluacion.items():
+    print(f"{key}: {value}")
+```
+
+### 📚 Conclusiones
+
+- La disputa de publishing 2028-2032 es crítica para el ecosistema musical
+- Los datos y el análisis cuantitativo son esenciales para tomar decisiones informadas
+- Los Music Data Analysts pueden jugar un rol clave en modelar estos escenarios
+- La integración de publishing en herramientas de A&R proporciona una visión más completa del valor de los artistas
+
+### 🚀 Próximos Pasos
+
+- Integrar datos reales de regalías por plataforma
+- Agregar análisis de sensibilidad con diferentes tasas de crecimiento
+- Desarrollar interfaz web interactiva con Streamlit
+- Conectar con la base de datos del A&R Scouting Command Center
+
+### 📄 Licencia
+
+Este proyecto es parte del portafolio de David Ned Bustamante - Music Data Analyst & Product Builder.
+
+- LinkedIn: https://www.linkedin.com/in/nedbustamante/
+- A&R Scouting Command Center: https://music-ar-scouting-platform-3gppcbtk6chqkpyyaxtc6y.streamlit.app/
+- 💻 GitHub: https://github.com/ned913msd
+
+### 🏷️ Tags
+
+`#MusicPublishing` `#DataAnalytics` `#Python` `#MusicBusiness` `#StreamingRoyalties` `#MusicTech` `#A&R` `#DataScience`
+
 ## 🎓 Competencias Demostradas
 
 Este proyecto demuestra habilidades de Music Data Analyst y Analytics Engineer:
